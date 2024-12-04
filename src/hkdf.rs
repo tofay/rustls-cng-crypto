@@ -1,5 +1,4 @@
 use crate::hash::Algorithm as HashAlgorithm;
-use crate::load_algorithm;
 use rustls::crypto::hash::Hash as _;
 use rustls::crypto::hmac::{Hmac as _, Tag};
 use rustls::crypto::tls13::{
@@ -8,10 +7,9 @@ use rustls::crypto::tls13::{
 use windows::core::{Owned, PCWSTR};
 use windows::Win32::Foundation::NTSTATUS;
 use windows::Win32::Security::Cryptography::{
-    BCryptBuffer, BCryptBufferDesc, BCryptGenerateSymmetricKey, BCryptKeyDerivation, BCryptSetProperty as Win32BCryptSetProperty, BCRYPTBUFFER_VERSION,
-    BCRYPT_HANDLE, BCRYPT_HKDF_ALGORITHM, BCRYPT_HKDF_HASH_ALGORITHM, BCRYPT_HKDF_PRK_AND_FINALIZE,
-    BCRYPT_HKDF_SALT_AND_FINALIZE, BCRYPT_KEY_HANDLE,
-    KDF_HKDF_INFO,
+    BCryptBuffer, BCryptBufferDesc, BCryptGenerateSymmetricKey, BCryptKeyDerivation,
+    BCryptSetProperty as Win32BCryptSetProperty, BCRYPTBUFFER_VERSION, BCRYPT_HANDLE, BCRYPT_HKDF_ALG_HANDLE, BCRYPT_HKDF_HASH_ALGORITHM,
+    BCRYPT_HKDF_PRK_AND_FINALIZE, BCRYPT_HKDF_SALT_AND_FINALIZE, BCRYPT_KEY_HANDLE, KDF_HKDF_INFO,
 };
 
 // Follows instructions at https://github.com/kdschlosser/pyWinAPI/blob/43e0be2dfe80aa701e01f43b806d1e8e52c3c221/shared/bcrypt_h.py#L637
@@ -39,11 +37,10 @@ impl<const HASH_SIZE: usize> RustlsHkdf for Hkdf<HASH_SIZE> {
         salt: Option<&[u8]>,
         secret: &[u8],
     ) -> Box<dyn RustlsHkdfExpander> {
-        let alg_handle = load_algorithm(BCRYPT_HKDF_ALGORITHM);
         let mut key_handle = Owned::default();
 
         unsafe {
-            BCryptGenerateSymmetricKey(*alg_handle, &mut *key_handle, None, secret, 0)
+            BCryptGenerateSymmetricKey(BCRYPT_HKDF_ALG_HANDLE, &mut *key_handle, None, secret, 0)
                 .ok()
                 .unwrap();
             let bcrypt_handle = BCRYPT_HANDLE(&mut *key_handle.0);
@@ -74,11 +71,10 @@ impl<const HASH_SIZE: usize> RustlsHkdf for Hkdf<HASH_SIZE> {
 
     fn expander_for_okm(&self, okm: &OkmBlock) -> Box<dyn RustlsHkdfExpander> {
         let okm = okm.as_ref();
-        let alg_handle = load_algorithm(BCRYPT_HKDF_ALGORITHM);
         let mut key_handle = Owned::default();
 
         unsafe {
-            BCryptGenerateSymmetricKey(*alg_handle, &mut *key_handle, None, okm, 0)
+            BCryptGenerateSymmetricKey(BCRYPT_HKDF_ALG_HANDLE, &mut *key_handle, None, okm, 0)
                 .ok()
                 .unwrap();
 

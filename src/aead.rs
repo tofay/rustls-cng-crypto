@@ -1,39 +1,38 @@
 use rustls::crypto::cipher::NONCE_LEN;
 use rustls::Error;
-use windows::core::{Owned, PCWSTR};
+use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
-    BCryptDecrypt, BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptSetProperty,
-    BCRYPT_AES_ALGORITHM, BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO,
-    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO_VERSION, BCRYPT_CHACHA20_POLY1305_ALGORITHM,
-    BCRYPT_CHAINING_MODE, BCRYPT_CHAIN_MODE_GCM, BCRYPT_FLAGS, BCRYPT_HANDLE, BCRYPT_KEY_HANDLE,
+    BCryptDecrypt, BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptSetProperty, BCRYPT_AES_GCM_ALG_HANDLE, BCRYPT_ALG_HANDLE,
+    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO, BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO_VERSION, BCRYPT_CHACHA20_POLY1305_ALG_HANDLE, BCRYPT_CHAINING_MODE,
+    BCRYPT_CHAIN_MODE_GCM, BCRYPT_FLAGS, BCRYPT_HANDLE, BCRYPT_KEY_HANDLE,
 };
 
-use crate::{load_algorithm, to_null_terminated_le_bytes};
+use crate::to_null_terminated_le_bytes;
 
 /// The tag length is 16 bytes for all supported ciphers.
 pub(crate) const TAG_LEN: usize = 16;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Algorithm {
-    id: PCWSTR,
+    handle: BCRYPT_ALG_HANDLE,
     key_size: usize,
     is_aes: bool,
 }
 
 pub(crate) const AES_128_GCM: Algorithm = Algorithm {
-    id: BCRYPT_AES_ALGORITHM,
+    handle: BCRYPT_AES_GCM_ALG_HANDLE,
     key_size: 16,
     is_aes: true,
 };
 
 pub(crate) const AES_256_GCM: Algorithm = Algorithm {
-    id: BCRYPT_AES_ALGORITHM,
+    handle: BCRYPT_AES_GCM_ALG_HANDLE,
     key_size: 32,
     is_aes: true,
 };
 
 pub(crate) const CHACHA20_POLY1305: Algorithm = Algorithm {
-    id: BCRYPT_CHACHA20_POLY1305_ALGORITHM,
+    handle: BCRYPT_CHACHA20_POLY1305_ALG_HANDLE,
     key_size: 32,
     is_aes: false,
 };
@@ -65,11 +64,9 @@ impl Algorithm {
             )));
         }
 
-        let alg_handle = load_algorithm(self.id);
-
         let mut key_handle = Owned::default();
         unsafe {
-            BCryptGenerateSymmetricKey(*alg_handle, &mut *key_handle, None, key, 0)
+            BCryptGenerateSymmetricKey(self.handle, &mut *key_handle, None, key, 0)
                 .ok()
                 .map_err(|e| Error::General(format!("AEAD key import error: {e}")))?;
 

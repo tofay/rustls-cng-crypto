@@ -1,17 +1,14 @@
-use crate::{
-    aead::{AeadKey, Algorithm, TAG_LEN},
-    load_algorithm, to_null_terminated_le_bytes,
-};
+use crate::aead::{AeadKey, Algorithm, TAG_LEN};
 use rustls::{
     crypto::cipher::{Iv, Nonce},
     quic, Error,
 };
 use windows::{
-    core::{Owned, PCWSTR},
+    core::Owned,
     Win32::Security::Cryptography::{
-        BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptSetProperty, BCRYPT_AES_ALGORITHM,
-        BCRYPT_CHAINING_MODE, BCRYPT_CHAIN_MODE_CBC, BCRYPT_FLAGS, BCRYPT_HANDLE,
-        BCRYPT_KEY_HANDLE,
+        BCryptEncrypt, BCryptGenerateSymmetricKey,
+        BCRYPT_AES_CBC_ALG_HANDLE, BCRYPT_ALG_HANDLE,
+        BCRYPT_FLAGS, BCRYPT_KEY_HANDLE,
     },
 };
 
@@ -36,43 +33,26 @@ struct PacketKey {
 }
 
 pub(crate) const HEADER_ALG_AES: HeaderAlg = HeaderAlg {
-    id: BCRYPT_AES_ALGORITHM,
-    is_aes: true,
+    handle: BCRYPT_AES_CBC_ALG_HANDLE,
 };
 
 // CNG does not support CHACHA20 yet
 // pub(crate) const HEADER_ALG_CHACHA20: HeaderAlg = HeaderAlg {
-//     id: BCRYPT_CHACHA20_ALGORITHM,
-//     is_aes: false,
 // };
 
 pub(crate) struct HeaderAlg {
-    id: PCWSTR,
-    is_aes: bool,
+    handle: BCRYPT_ALG_HANDLE,
 }
 
 impl HeaderAlg {
-    fn with_key(&self, key: &[u8]) -> HeaderProtectionKey {
-        let alg_handle = load_algorithm(self.id);
-
+    fn with_key(&self, key: &[u8]) -> Result<HeaderProtectionKey, Error> {
         let mut key_handle = Owned::default();
         unsafe {
-            BCryptGenerateSymmetricKey(*alg_handle, &mut *key_handle, None, key, 0)
+            BCryptGenerateSymmetricKey(self.handle, &mut *key_handle, None, key, 0)
                 .ok()
-                .unwrap();
-            if self.is_aes {
-                let bcrypt_handle = BCRYPT_HANDLE(&mut *key_handle.0);
-                BCryptSetProperty(
-                    bcrypt_handle,
-                    BCRYPT_CHAINING_MODE,
-                    &to_null_terminated_le_bytes(BCRYPT_CHAIN_MODE_CBC),
-                    0,
-                )
-                .ok()
-                .unwrap();
-            }
+                .map_err(|e| Error::General(format!("BCryptGenerateSymmetricKey error: {e}")))?;
         }
-        HeaderProtectionKey { key: key_handle }
+        Ok(HeaderProtectionKey { key: key_handle })
     }
 }
 
@@ -101,7 +81,7 @@ impl quic::Algorithm for KeyBuilder {
         &self,
         key: rustls::crypto::cipher::AeadKey,
     ) -> Box<dyn quic::HeaderProtectionKey> {
-        Box::new(self.header_algo.with_key(key.as_ref()))
+        Box::new(self.header_algo.with_key(key.as_ref()).unwrap())
     }
 
     fn aead_key_len(&self) -> usize {

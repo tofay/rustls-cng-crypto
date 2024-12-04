@@ -54,33 +54,22 @@
 //! - `tls12`: Enables TLS 1.2 cipher suites. Enabled by default.
 //! - `fips`: Enabling this feature removes non-FIPS-approved cipher suites and key exchanges. Disabled by default. See [fips].
 #![warn(missing_docs)]
-use openssl::rand::rand_priv_bytes;
+
 use rustls::crypto::{CryptoProvider, GetRandomFailed, SupportedKxGroup};
 use rustls::SupportedCipherSuite;
 
-use windows::core::Owned;
 use windows::core::PCWSTR;
 use windows::Win32::Security::Cryptography::{
-    BCryptOpenAlgorithmProvider, BCRYPT_ALG_HANDLE, BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS,
+    BCryptGenRandom, BCRYPT_ALG_HANDLE, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
 };
 
 mod aead;
+mod alg;
 mod hash;
 mod hkdf;
 mod hmac;
+mod keys;
 mod kx;
-
-fn to_null_terminated_le_bytes(str: PCWSTR) -> Vec<u8> {
-    unsafe {
-        str.as_wide()
-            .iter()
-            .copied()
-            .chain(Some(0))
-            .flat_map(u16::to_le_bytes)
-            .collect()
-    }
-}
-
 #[cfg(feature = "tls12")]
 mod prf;
 mod quic;
@@ -104,8 +93,8 @@ pub mod cipher_suite {
     pub use super::tls13::{TLS13_AES_128_GCM_SHA256, TLS13_AES_256_GCM_SHA384};
 }
 
+pub use alg::ShutdownHandle;
 pub use kx::ALL_KX_GROUPS;
-
 pub mod kx_group {
     //! Supported key exchange groups.
     pub use super::kx::X25519;
@@ -230,21 +219,25 @@ pub struct SecureRandom;
 
 impl rustls::crypto::SecureRandom for SecureRandom {
     fn fill(&self, buf: &mut [u8]) -> Result<(), GetRandomFailed> {
-        rand_priv_bytes(buf).map_err(|_| GetRandomFailed)
+        unsafe {
+            BCryptGenRandom(
+                BCRYPT_ALG_HANDLE::default(),
+                buf,
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+            )
+            .ok()
+            .map_err(|_| GetRandomFailed)
+        }
     }
 }
 
-pub(crate) fn load_algorithm(alg_id: PCWSTR) -> Owned<BCRYPT_ALG_HANDLE> {
-    let mut alg_handle = windows::core::Owned::default();
+fn to_null_terminated_le_bytes(str: PCWSTR) -> Vec<u8> {
     unsafe {
-        BCryptOpenAlgorithmProvider(
-            &mut *alg_handle,
-            alg_id,
-            None,
-            BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
-        )
-        .ok()
-        .unwrap();
+        str.as_wide()
+            .iter()
+            .copied()
+            .chain(Some(0))
+            .flat_map(u16::to_le_bytes)
+            .collect()
     }
-    alg_handle
 }

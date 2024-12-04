@@ -93,14 +93,11 @@ fn test_with_provider(
         CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
     )
 )]
-#[cfg_attr(
-    not(feature = "fips"),
-    case::tls13_aes_256_gcm_sha384_x25519(
-        rustls_cng_crypto::cipher_suite::TLS13_AES_256_GCM_SHA384,
-        rustls_cng_crypto::kx_group::X25519,
-        server::Alg::PKCS_ECDSA_P256_SHA256,
-        CipherSuite::TLS13_AES_256_GCM_SHA384
-    )
+#[case::tls13_aes_256_gcm_sha384_x25519(
+    rustls_cng_crypto::cipher_suite::TLS13_AES_256_GCM_SHA384,
+    rustls_cng_crypto::kx_group::X25519,
+    server::Alg::PKCS_ECDSA_P256_SHA256,
+    CipherSuite::TLS13_AES_256_GCM_SHA384
 )]
 #[case::tls13_aes_256_gcm_sha384_secp384r1(
     rustls_cng_crypto::cipher_suite::TLS13_AES_256_GCM_SHA384,
@@ -109,7 +106,7 @@ fn test_with_provider(
     CipherSuite::TLS13_AES_256_GCM_SHA384
 )]
 #[cfg_attr(
-    all(feature = "tls12", chacha, not(feature = "fips")),
+    feature = "tls12",
     case::tls_ecdhe_rsa_with_chacha20_poly1305_sha256(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
         rustls_cng_crypto::kx_group::SECP256R1,
@@ -126,17 +123,17 @@ fn test_with_provider(
         CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
     )
 )]
+// #[cfg_attr(
+//     feature = "tls12",
+//     case::ed25519_tls12(
+//         rustls_cng_crypto::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+//         rustls_cng_crypto::kx_group::SECP256R1,
+//         server::Alg::PKCS_ED25519,
+//         CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+//     )
+// )]
 #[cfg_attr(
-    all(feature = "tls12", not(feature = "fips")),
-    case::ed25519_tls12(
-        rustls_cng_crypto::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        rustls_cng_crypto::kx_group::SECP256R1,
-        server::Alg::PKCS_ED25519,
-        CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-    )
-)]
-#[cfg_attr(
-    all(feature = "tls12", not(feature = "fips")),
+    feature = "tls12",
     case::tls_ecdhe_rsa_with_aes_256_gcm_sha384(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
         rustls_cng_crypto::kx_group::X25519,
@@ -165,7 +162,7 @@ fn test_client_and_server(
 
 #[rstest]
 #[cfg_attr(
-    all(feature = "tls12", chacha, not(feature = "fips")),
+    feature = "tls12",
     case(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
         rustls_cng_crypto::kx_group::SECP384R1,
@@ -240,7 +237,7 @@ fn test_default_client() {
     assert_eq!(actual_suite, CipherSuite::TLS13_AES_256_GCM_SHA384);
 }
 
-static RSA_SIGNING_SCHEMES: &[SignatureScheme] = &[
+static RSA_SCHEMES: &[SignatureScheme] = &[
     SignatureScheme::RSA_PKCS1_SHA256,
     SignatureScheme::RSA_PKCS1_SHA384,
     SignatureScheme::RSA_PKCS1_SHA512,
@@ -249,12 +246,20 @@ static RSA_SIGNING_SCHEMES: &[SignatureScheme] = &[
     SignatureScheme::RSA_PSS_SHA512,
 ];
 
-#[test]
-fn test_rsa_sign_and_verify() {
+/// Generate a key pair, and sign/verify using each signature scheme.
+#[rstest::rstest]
+#[case::rsa_pkcs1_sha256(&rcgen::PKCS_RSA_SHA256, RSA_SCHEMES)]
+#[case::ecdsa_p256(&rcgen::PKCS_ECDSA_P256_SHA256, &[SignatureScheme::ECDSA_NISTP256_SHA256])]
+#[case::ecdsa_p384(&rcgen::PKCS_ECDSA_P384_SHA384, &[SignatureScheme::ECDSA_NISTP384_SHA384])]
+#[case::ecdsa_p521(&rcgen::PKCS_ECDSA_P521_SHA512, &[SignatureScheme::ECDSA_NISTP521_SHA512])]
+//#[case::ed25519_sign(&rcgen::PKCS_ED25519, &[SignatureScheme::ED25519])]
+fn test_sign_and_verify(
+    #[case] alg: &'static rcgen::SignatureAlgorithm,
+    #[case] schemes: &[SignatureScheme],
+) {
     let ours = rustls_cng_crypto::default_provider();
     let theirs = rustls::crypto::aws_lc_rs::default_provider();
-    let pair = rcgen::KeyPair::generate_rsa_for(&rcgen::PKCS_RSA_SHA256, rcgen::RsaKeySize::_2048)
-        .unwrap();
+    let pair = rcgen::KeyPair::generate_for(alg).unwrap();
     let rustls_private_key =
         PrivateKeyDer::from_pem_slice(pair.serialize_pem().as_bytes()).unwrap();
 
@@ -273,74 +278,11 @@ fn test_rsa_sign_and_verify() {
         .load_private_key(rustls_private_key)
         .unwrap();
 
-    for scheme in RSA_SIGNING_SCHEMES {
+    for scheme in schemes {
         sign_and_verify(our_signing_key.clone(), &theirs, *scheme, &cert);
         sign_and_verify(their_signing_key.clone(), &ours, *scheme, &cert);
     }
 }
-
-// #[rstest]
-// #[case::ecdsa_nistp256_sha256(SignatureScheme::ECDSA_NISTP256_SHA256, Nid::X9_62_PRIME256V1)]
-// #[case::ecdsa_nistp384_sha384(SignatureScheme::ECDSA_NISTP384_SHA384, Nid::SECP384R1)]
-// #[case::ecdsa_nistp521_sha512(SignatureScheme::ECDSA_NISTP521_SHA512, Nid::SECP521R1)]
-
-#[test]
-fn test_ecdsa_sign() {
-    let ours = rustls_cng_crypto::default_provider();
-    let theirs = rustls::crypto::aws_lc_rs::default_provider();
-    let pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
-    let rustls_private_key =
-        PrivateKeyDer::from_pem_slice(pair.serialize_pem().as_bytes()).unwrap();
-
-    let cert = CertificateParams::new(vec![])
-        .unwrap()
-        .self_signed(&pair)
-        .unwrap();
-    let cert = EndEntityCert::try_from(cert.der()).unwrap();
-
-    let our_signing_key = ours
-        .key_provider
-        .load_private_key(rustls_private_key.clone_key())
-        .unwrap();
-    let their_signing_key = theirs
-        .key_provider
-        .load_private_key(rustls_private_key)
-        .unwrap();
-
-    for scheme in RSA_SIGNING_SCHEMES {
-        sign_and_verify(our_signing_key.clone(), &theirs, *scheme, &cert);
-        sign_and_verify(their_signing_key.clone(), &ours, *scheme, &cert);
-    }
-}
-
-// #[cfg(not(feature = "fips"))]
-// #[test]
-// fn test_ed25119_sign_and_verify() {
-//     let ours = rustls_cng_crypto::default_provider();
-//     let theirs = rustls::crypto::aws_lc_rs::default_provider();
-//     let scheme = SignatureScheme::ED25519;
-
-//     let private_key = PKey::generate_ed25519().unwrap();
-//     let pub_key = private_key.raw_public_key().unwrap();
-//     let rustls_private_key =
-//         PrivateKeyDer::from_pem_slice(&private_key.private_key_to_pem_pkcs8().unwrap()).unwrap();
-//     eprintln!("verifying using theirs");
-//     sign_and_verify(
-//         &ours,
-//         &theirs,
-//         scheme,
-//         rustls_private_key.clone_key(),
-//         &pub_key,
-//     );
-//     eprintln!("verifying using ours");
-//     sign_and_verify(
-//         &theirs,
-//         &ours,
-//         scheme,
-//         rustls_private_key.clone_key(),
-//         &pub_key,
-//     );
-// }
 
 fn sign_and_verify(
     signing_key: Arc<dyn SigningKey>,

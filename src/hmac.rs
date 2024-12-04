@@ -1,26 +1,15 @@
-
 use crate::hash::{Algorithm, Context};
 use rustls::crypto::hash::Context as _;
 use rustls::crypto::hmac::{Key, Tag};
 use windows::core::Owned;
-use windows::Win32::Security::Cryptography::{
-    BCryptCreateHash, BCryptOpenAlgorithmProvider, BCRYPT_ALG_HANDLE_HMAC_FLAG,
-};
+use windows::Win32::Security::Cryptography::BCryptCreateHash;
 
 impl<const SIZE: usize> rustls::crypto::hmac::Hmac for Algorithm<SIZE> {
     fn with_key(&self, key: &[u8]) -> Box<dyn Key> {
-        let mut alg_handle = Owned::default();
         let mut hash_handle = Owned::default();
+
         unsafe {
-            BCryptOpenAlgorithmProvider(
-                &mut *alg_handle,
-                self.id,
-                None,
-                BCRYPT_ALG_HANDLE_HMAC_FLAG,
-            )
-            .ok()
-            .unwrap();
-            BCryptCreateHash(*alg_handle, &mut *hash_handle, None, Some(key), 0)
+            BCryptCreateHash(self.hmac_handle(), &mut *hash_handle, None, Some(key), 0)
                 .ok()
                 .unwrap();
         }
@@ -92,20 +81,16 @@ mod test {
                 match &test.result {
                     TestResult::Invalid => {
                         assert_ne!(
-                            actual_tag,
-                            expected_tag,
+                            actual_tag, expected_tag,
                             "Expected incorrect tag. Id {}: {}",
-                            test.tc_id,
-                            test.comment
+                            test.tc_id, test.comment
                         );
                     }
                     TestResult::Valid | TestResult::Acceptable => {
                         assert_eq!(
-                            actual_tag,
-                            expected_tag,
+                            actual_tag, expected_tag,
                             "Incorrect tag on testcase {}: {}",
-                            test.tc_id,
-                            test.comment
+                            test.tc_id, test.comment
                         );
                     }
                 }

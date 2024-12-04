@@ -97,7 +97,6 @@ impl TestPki {
         ];
 
         let ca_key = generate_for(alg);
-
         let ca_cert = ca_params.self_signed(&ca_key).unwrap();
 
         // Create a server end entity cert issued by the CA.

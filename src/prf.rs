@@ -1,12 +1,12 @@
-use crate::{hash::Algorithm, load_algorithm};
+use crate::{alg::tls12_kdf, hash::Algorithm};
 use rustls::crypto::ActiveKeyExchange;
 use std::boxed::Box;
 use windows::{
     core::Owned,
     Win32::Security::Cryptography::{
         BCryptBuffer, BCryptBufferDesc, BCryptGenerateSymmetricKey, BCryptKeyDerivation,
-        BCRYPTBUFFER_VERSION, BCRYPT_TLS1_2_KDF_ALGORITHM, KDF_HASH_ALGORITHM, KDF_TLS_PRF_LABEL,
-        KDF_TLS_PRF_SEED,
+        BCRYPTBUFFER_VERSION,
+        KDF_HASH_ALGORITHM, KDF_TLS_PRF_LABEL, KDF_TLS_PRF_SEED,
     },
 };
 
@@ -27,11 +27,10 @@ impl<const HASH_SIZE: usize> rustls::crypto::tls12::Prf for Prf<HASH_SIZE> {
     }
 
     fn for_secret(&self, output: &mut [u8], secret: &[u8], label: &[u8], seed: &[u8]) {
-        let alg = load_algorithm(BCRYPT_TLS1_2_KDF_ALGORITHM);
         let mut key = Owned::default();
 
         unsafe {
-            BCryptGenerateSymmetricKey(*alg, &mut *key, None, secret, 0)
+            BCryptGenerateSymmetricKey(tls12_kdf(), &mut *key, None, secret, 0)
                 .ok()
                 .unwrap();
         }

@@ -1,16 +1,15 @@
 use rustls::crypto::{ActiveKeyExchange, SharedSecret, SupportedKxGroup};
 use rustls::{Error, NamedGroup};
-use windows::core::{Owned, Param, PCWSTR};
+use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
-    BCryptDeriveKey, BCryptExportKey, BCryptFinalizeKeyPair, BCryptGenerateKeyPair,
-    BCryptImportKeyPair, BCryptOpenAlgorithmProvider, BCryptSecretAgreement, BCryptSetProperty,
-    BCRYPT_ALG_HANDLE, BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECC_CURVE_25519,
-    BCRYPT_ECC_CURVE_NAME, BCRYPT_ECC_CURVE_NISTP256, BCRYPT_ECC_CURVE_NISTP384,
-    BCRYPT_ECDH_ALGORITHM, BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC, BCRYPT_HANDLE, BCRYPT_KDF_RAW_SECRET,
-    BCRYPT_KEY_HANDLE, BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS,
+    BCryptDeriveKey, BCryptExportKey, BCryptFinalizeKeyPair, BCryptGenerateKeyPair, BCryptSecretAgreement, BCRYPT_ALG_HANDLE,
+    BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPUBLIC_BLOB,
+    BCRYPT_ECDH_P256_ALG_HANDLE, BCRYPT_ECDH_P384_ALG_HANDLE, BCRYPT_KDF_RAW_SECRET,
+    BCRYPT_KEY_HANDLE,
 };
 
-use crate::to_null_terminated_le_bytes;
+use crate::alg;
+use crate::keys::import_ec_public_key;
 
 /// The maximum size of the shared secret produced by a supported key exchange group.
 const MAX_SECRET_SIZE: usize = 48;
@@ -31,11 +30,11 @@ enum KxGroup {
 }
 
 impl KxGroup {
-    fn ecc_curve(&self) -> PCWSTR {
+    fn alg_handle(&self) -> BCRYPT_ALG_HANDLE {
         match self {
-            Self::SECP256R1 => BCRYPT_ECC_CURVE_NISTP256,
-            Self::SECP384R1 => BCRYPT_ECC_CURVE_NISTP384,
-            Self::X25519 => BCRYPT_ECC_CURVE_25519,
+            Self::SECP256R1 => BCRYPT_ECDH_P256_ALG_HANDLE,
+            Self::SECP384R1 => BCRYPT_ECDH_P384_ALG_HANDLE,
+            Self::X25519 => alg::ecdh_x25519(),
         }
     }
 
@@ -65,7 +64,6 @@ impl KxGroup {
 
 struct EcKeyExchange {
     kx_group: KxGroup,
-    alg_handle: Owned<BCRYPT_ALG_HANDLE>,
     key_handle: Owned<BCRYPT_KEY_HANDLE>,
     public_key: Vec<u8>,
 }
@@ -83,30 +81,10 @@ pub const SECP384R1: &dyn SupportedKxGroup = &KxGroup::SECP384R1;
 impl SupportedKxGroup for KxGroup {
     fn start(&self) -> Result<Box<(dyn ActiveKeyExchange)>, Error> {
         let mut key_handle = Owned::default();
-        let mut alg_handle = Owned::default();
+
         unsafe {
-            BCryptOpenAlgorithmProvider(
-                &mut *alg_handle,
-                BCRYPT_ECDH_ALGORITHM,
-                None,
-                BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
-            )
-            .ok()
-            .map_err(|e| Error::General(format!("CNG error: {e}")))?;
-
-            let curve = self.ecc_curve();
             let bits = self.key_bits();
-
-            let bcrypt_handle = BCRYPT_HANDLE(&mut *alg_handle.0);
-            BCryptSetProperty(
-                bcrypt_handle,
-                BCRYPT_ECC_CURVE_NAME,
-                &to_null_terminated_le_bytes(curve),
-                0,
-            )
-            .ok()
-            .map_err(|e| Error::General(format!("CNG error: {e}")))?;
-            BCryptGenerateKeyPair(*alg_handle, &mut *key_handle, bits as u32, 0)
+            BCryptGenerateKeyPair(self.alg_handle(), &mut *key_handle, bits as u32, 0)
                 .ok()
                 .map_err(|e| Error::General(format!("CNG error: {e}")))?;
             BCryptFinalizeKeyPair(*key_handle, 0)
@@ -154,7 +132,6 @@ impl SupportedKxGroup for KxGroup {
         Ok(Box::new(EcKeyExchange {
             kx_group: *self,
             key_handle,
-            alg_handle,
             public_key,
         }) as Box<dyn ActiveKeyExchange>)
     }
@@ -201,19 +178,7 @@ impl ActiveKeyExchange for EcKeyExchange {
             &[0; 32]
         };
 
-        let mut peer_key_handle = Owned::default();
-
-        match &self.kx_group {
-            KxGroup::SECP256R1 => {
-                PublicKeyBlob::<32>::load(*self.alg_handle, &mut *peer_key_handle, x, y)?;
-            }
-            KxGroup::SECP384R1 => {
-                PublicKeyBlob::<48>::load(*self.alg_handle, &mut *peer_key_handle, x, y)?;
-            }
-            KxGroup::X25519 => {
-                PublicKeyBlob::<32>::load(*self.alg_handle, &mut *peer_key_handle, x, y)?;
-            }
-        };
+        let peer_key_handle = import_ec_public_key(self.kx_group.alg_handle(), x, y)?;
 
         // Now derive the shared secret
         let mut secret = Owned::default();
@@ -256,103 +221,13 @@ impl ActiveKeyExchange for EcKeyExchange {
     }
 }
 
-/// A public key blob for loading into CNG.
-#[repr(C)]
-struct PublicKeyBlob<const SIZE: usize> {
-    header: BCRYPT_ECCKEY_BLOB,
-    x: [u8; SIZE],
-    y: [u8; SIZE],
-}
-
-impl<const SIZE: usize> PublicKeyBlob<SIZE> {
-    /// Load a public key blob into CNG.
-    ///
-    /// Params:
-    /// * `alg_handle` - The algorithm handle.
-    /// * `key_handle` - The key handle for the resulting key.
-    /// * `x` - The x coordinate of the public key.
-    /// * `y` - The y coordinate of the public key.
-    ///
-    fn load(
-        alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
-        key_handle: *mut BCRYPT_KEY_HANDLE,
-        x: &[u8],
-        y: &[u8],
-    ) -> Result<(), Error> {
-        if x.len() != SIZE || y.len() != SIZE {
-            return Err(Error::General("Invalid key length".to_string()));
-        }
-
-        let mut blob = Self {
-            header: BCRYPT_ECCKEY_BLOB {
-                dwMagic: BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC,
-                cbKey: SIZE as u32,
-            },
-            x: [0; SIZE],
-            y: [0; SIZE],
-        };
-        blob.x.copy_from_slice(x);
-        blob.y.copy_from_slice(y);
-
-        unsafe {
-            let p: *const PublicKeyBlob<SIZE> = &blob;
-            let p: *const u8 = p.cast::<u8>();
-            let slice = std::slice::from_raw_parts(p, core::mem::size_of::<PublicKeyBlob<SIZE>>());
-
-            BCryptImportKeyPair(
-                alg_handle,
-                BCRYPT_KEY_HANDLE::default(),
-                BCRYPT_ECCPUBLIC_BLOB,
-                key_handle,
-                slice,
-                0,
-            )
-            .ok()
-            .map_err(|e| Error::General(format!("Error importing public key blob: {e}")))
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use rustls::crypto::ActiveKeyExchange;
-    use windows::{
-        core::Owned,
-        Win32::Security::Cryptography::{
-            BCryptImportKeyPair, BCryptOpenAlgorithmProvider, BCryptSetProperty,
-            BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPRIVATE_BLOB, BCRYPT_ECC_CURVE_NAME,
-            BCRYPT_ECDH_ALGORITHM, BCRYPT_ECDH_PRIVATE_GENERIC_MAGIC, BCRYPT_HANDLE,
-            BCRYPT_KEY_HANDLE, BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS,
-        },
-    };
+    use windows::core::Owned;
     use wycheproof::{ecdh::TestName, TestResult};
 
-    use crate::{kx::EcKeyExchange, to_null_terminated_le_bytes};
-
-    const CURVE_SIZE: usize = 32;
-
-    #[repr(C)]
-    pub(super) struct PrivateKey {
-        pub header: BCRYPT_ECCKEY_BLOB,
-        pub x: [u8; CURVE_SIZE],
-        pub y: [u8; CURVE_SIZE],
-        pub d: [u8; CURVE_SIZE],
-    }
-    impl PrivateKey {
-        pub(super) fn new(d: &[u8]) -> Self {
-            let mut blob = Self {
-                header: BCRYPT_ECCKEY_BLOB {
-                    dwMagic: BCRYPT_ECDH_PRIVATE_GENERIC_MAGIC,
-                    cbKey: CURVE_SIZE as u32,
-                },
-                x: [0; CURVE_SIZE],
-                y: [0; CURVE_SIZE],
-                d: [0; CURVE_SIZE],
-            };
-            blob.d.copy_from_slice(d);
-            blob
-        }
-    }
+    use crate::{keys::import_ec_private_key, kx::EcKeyExchange};
 
     #[test]
     fn secp256r1() {
@@ -360,57 +235,18 @@ mod test {
 
         for test_group in &test_set.test_groups {
             for test in &test_group.tests {
-                if test.private_key.len() != CURVE_SIZE {
+                if test.private_key.len() != 32 {
                     continue;
                 }
                 dbg!(test);
 
                 let mut kx = EcKeyExchange {
                     kx_group: crate::kx::KxGroup::SECP256R1,
-                    alg_handle: Owned::default(),
                     key_handle: Owned::default(),
                     public_key: Vec::new(),
                 };
-
-                // load the key
-                unsafe {
-                    BCryptOpenAlgorithmProvider(
-                        &mut *kx.alg_handle,
-                        BCRYPT_ECDH_ALGORITHM,
-                        None,
-                        BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
-                    )
-                    .ok()
-                    .unwrap();
-                    let bcrypt_handle = BCRYPT_HANDLE(&mut *kx.alg_handle.0);
-                    BCryptSetProperty(
-                        bcrypt_handle,
-                        BCRYPT_ECC_CURVE_NAME,
-                        &to_null_terminated_le_bytes(kx.kx_group.ecc_curve()),
-                        0,
-                    )
-                    .ok()
-                    .unwrap();
-                }
-
-                let key_blob = PrivateKey::new(&test.private_key);
-
-                unsafe {
-                    let p: *const PrivateKey = &key_blob;
-                    let p: *const u8 = p.cast::<u8>();
-                    let slice = std::slice::from_raw_parts(p, core::mem::size_of::<PrivateKey>());
-
-                    BCryptImportKeyPair(
-                        *kx.alg_handle,
-                        BCRYPT_KEY_HANDLE::default(),
-                        BCRYPT_ECCPRIVATE_BLOB,
-                        &mut *kx.key_handle,
-                        slice,
-                        0,
-                    )
-                    .ok()
-                    .unwrap();
-                }
+                kx.key_handle =
+                    import_ec_private_key(kx.kx_group.alg_handle(), &test.private_key).unwrap();
 
                 let res = Box::new(kx).complete(&test.public_key);
                 let pub_key_uncompressed = test.public_key.first() == Some(&0x04);
@@ -434,63 +270,23 @@ mod test {
 
         for test_group in &test_set.test_groups {
             for test in &test_group.tests {
-                if test.private_key.len() != CURVE_SIZE {
+                if test.private_key.len() != 32 {
                     continue;
                 }
                 dbg!(test);
 
                 let mut kx = EcKeyExchange {
                     kx_group: crate::kx::KxGroup::X25519,
-                    alg_handle: Default::default(),
-                    key_handle: Default::default(),
+                    key_handle: Owned::default(),
                     public_key: Vec::new(),
                 };
-
-                // load the key
-                unsafe {
-                    BCryptOpenAlgorithmProvider(
-                        &mut *kx.alg_handle,
-                        BCRYPT_ECDH_ALGORITHM,
-                        None,
-                        BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS(0),
-                    )
-                    .ok()
-                    .unwrap();
-                    let bcrypt_handle = BCRYPT_HANDLE(&mut *kx.alg_handle.0);
-                    BCryptSetProperty(
-                        bcrypt_handle,
-                        BCRYPT_ECC_CURVE_NAME,
-                        &to_null_terminated_le_bytes(kx.kx_group.ecc_curve()),
-                        0,
-                    )
-                    .ok()
-                    .unwrap();
-                }
 
                 // Convert to DivHTimesH format https://github.com/microsoft/SymCrypt/blob/1d7e34b8d11870c6bb239caf580ece63785e973a/inc/symcrypt.h#L7027
                 let mut key = test.private_key.to_vec();
                 key[0] &= 0xf8;
                 key[31] &= 0x7f;
                 key[31] |= 0x40;
-
-                let key_blob = PrivateKey::new(&key);
-
-                unsafe {
-                    let p: *const PrivateKey = &key_blob;
-                    let p: *const u8 = p.cast::<u8>();
-                    let slice = std::slice::from_raw_parts(p, core::mem::size_of::<PrivateKey>());
-
-                    BCryptImportKeyPair(
-                        *kx.alg_handle,
-                        BCRYPT_KEY_HANDLE::default(),
-                        BCRYPT_ECCPRIVATE_BLOB,
-                        &mut *kx.key_handle,
-                        slice,
-                        0,
-                    )
-                    .ok()
-                    .unwrap();
-                }
+                kx.key_handle = import_ec_private_key(kx.kx_group.alg_handle(), &key).unwrap();
 
                 let res = Box::new(kx).complete(&test.public_key);
 
