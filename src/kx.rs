@@ -2,8 +2,8 @@ use rustls::crypto::{ActiveKeyExchange, SharedSecret, SupportedKxGroup};
 use rustls::{Error, NamedGroup};
 use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
-    BCryptDeriveKey, BCryptExportKey, BCryptFinalizeKeyPair, BCryptGenerateKeyPair, BCryptSecretAgreement, BCRYPT_ALG_HANDLE,
-    BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPUBLIC_BLOB,
+    BCryptDeriveKey, BCryptExportKey, BCryptFinalizeKeyPair, BCryptGenerateKeyPair,
+    BCryptSecretAgreement, BCRYPT_ALG_HANDLE, BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPUBLIC_BLOB,
     BCRYPT_ECDH_P256_ALG_HANDLE, BCRYPT_ECDH_P384_ALG_HANDLE, BCRYPT_KDF_RAW_SECRET,
     BCRYPT_KEY_HANDLE,
 };
@@ -30,7 +30,7 @@ enum KxGroup {
 }
 
 impl KxGroup {
-    fn alg_handle(&self) -> BCRYPT_ALG_HANDLE {
+    fn alg_handle(self) -> BCRYPT_ALG_HANDLE {
         match self {
             Self::SECP256R1 => BCRYPT_ECDH_P256_ALG_HANDLE,
             Self::SECP384R1 => BCRYPT_ECDH_P384_ALG_HANDLE,
@@ -38,7 +38,7 @@ impl KxGroup {
         }
     }
 
-    fn named_group(&self) -> NamedGroup {
+    fn named_group(self) -> NamedGroup {
         match self {
             Self::SECP256R1 => NamedGroup::secp256r1,
             Self::SECP384R1 => NamedGroup::secp384r1,
@@ -46,14 +46,14 @@ impl KxGroup {
         }
     }
 
-    fn is_nist(&self) -> bool {
+    fn is_nist(self) -> bool {
         match self {
             Self::SECP256R1 | Self::SECP384R1 => true,
             Self::X25519 => false,
         }
     }
 
-    fn key_bits(&self) -> usize {
+    fn key_bits(self) -> usize {
         match self {
             Self::SECP256R1 => 256,
             Self::SECP384R1 => 384,

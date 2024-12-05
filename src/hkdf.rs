@@ -8,14 +8,16 @@ use windows::core::{Owned, PCWSTR};
 use windows::Win32::Foundation::NTSTATUS;
 use windows::Win32::Security::Cryptography::{
     BCryptBuffer, BCryptBufferDesc, BCryptGenerateSymmetricKey, BCryptKeyDerivation,
-    BCryptSetProperty as Win32BCryptSetProperty, BCRYPTBUFFER_VERSION, BCRYPT_HANDLE, BCRYPT_HKDF_ALG_HANDLE, BCRYPT_HKDF_HASH_ALGORITHM,
-    BCRYPT_HKDF_PRK_AND_FINALIZE, BCRYPT_HKDF_SALT_AND_FINALIZE, BCRYPT_KEY_HANDLE, KDF_HKDF_INFO,
+    BCryptSetProperty as Win32BCryptSetProperty, BCRYPTBUFFER_VERSION, BCRYPT_HANDLE,
+    BCRYPT_HKDF_ALG_HANDLE, BCRYPT_HKDF_HASH_ALGORITHM, BCRYPT_HKDF_PRK_AND_FINALIZE,
+    BCRYPT_HKDF_SALT_AND_FINALIZE, BCRYPT_KEY_HANDLE, KDF_HKDF_INFO,
 };
 
 // Follows instructions at https://github.com/kdschlosser/pyWinAPI/blob/43e0be2dfe80aa701e01f43b806d1e8e52c3c221/shared/bcrypt_h.py#L637
 // for using the BCrypt HKDF API.
 
 /// HKDF implementation using HMAC with the specified Hash Algorithm
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct Hkdf<const HASH_SIZE: usize>(pub(crate) HashAlgorithm<HASH_SIZE>);
 
 struct HkdfExpander<const HASH_SIZE: usize> {

@@ -54,7 +54,6 @@
 //! - `tls12`: Enables TLS 1.2 cipher suites. Enabled by default.
 //! - `fips`: Enabling this feature removes non-FIPS-approved cipher suites and key exchanges. Disabled by default. See [fips].
 #![warn(missing_docs)]
-
 use rustls::crypto::{CryptoProvider, GetRandomFailed, SupportedKxGroup};
 use rustls::SupportedCipherSuite;
 

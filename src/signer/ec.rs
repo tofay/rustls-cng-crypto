@@ -1,7 +1,7 @@
 use crate::hash::{SHA256, SHA384, SHA512};
 use crate::keys::import_ec_private_key;
 use pkcs1::der::Decode as _;
-use pkcs1::ObjectIdentifier;
+use pkcs1::{ObjectIdentifier, UintRef};
 use pkcs8::PrivateKeyInfo;
 use rustls::crypto::hash::Hash;
 use rustls::pki_types::PrivateKeyDer;
@@ -11,8 +11,7 @@ use sec1::EcPrivateKey;
 use std::sync::Arc;
 use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
-    BCryptSignHash, BCRYPT_ECDH_P256_ALG_HANDLE, BCRYPT_ECDH_P384_ALG_HANDLE,
-    BCRYPT_ECDH_P521_ALG_HANDLE, BCRYPT_ECDSA_P256_ALG_HANDLE, BCRYPT_ECDSA_P384_ALG_HANDLE,
+    BCryptSignHash, BCRYPT_ECDSA_P256_ALG_HANDLE, BCRYPT_ECDSA_P384_ALG_HANDLE,
     BCRYPT_ECDSA_P521_ALG_HANDLE, BCRYPT_FLAGS, BCRYPT_KEY_HANDLE,
 };
 
@@ -162,32 +161,68 @@ impl rustls::sign::Signer for EcKey {
     }
 }
 
-// Copied from https://github.com/rustls/rustls-cng/tree/b7cd0ab80fe11cade09cac8fcc5d038c3412d780; MIT License
+// Initially copied from https://github.com/rustls/rustls-cng/tree/b7cd0ab80fe11cade09cac8fcc5d038c3412d780; MIT License
 //
 // Convert IEEE-P1363 signature format to DER encoding.
-// We assume the length of the r and s parts is less than 256 bytes.
+// Assumes the the signature is less than 252 bytes.
 fn p1363_to_der(data: &[u8]) -> Vec<u8> {
-    let (r, s) = data.split_at(data.len() / 2);
+    const SEQUENCE_TAG: u8 = 0x30;
+    const INTEGER_TAG: u8 = 0x02;
 
+    let (mut r, mut s) = data.split_at(data.len() / 2);
+
+    while r[0] == 0x0 {
+        r = &r[1..];
+    }
+
+    while s[0] == 0x0 {
+        s = &s[1..];
+    }
+
+    // Do we need to pad the r and s parts?
     let r_sign: &[u8] = if r[0] >= 0x80 { &[0] } else { &[] };
     let s_sign: &[u8] = if s[0] >= 0x80 { &[0] } else { &[] };
 
-    let length = data.len() + 2 + 4 + r_sign.len() + s_sign.len();
+    // Length of the value, i.e excluding the tag and length bytes
+    // For longer signatures the 4  Tag-LENGTH bytes are not enough, but we assume that the signature is less than 252 bytes.
+    let v_length = 4 + r_sign.len() + s_sign.len() + r.len() + s.len();
 
-    let mut buf = Vec::with_capacity(length);
+    // Do we use short or long form for the length?
+    let (short_form, length_len) = if v_length <= 0x80 {
+        // Short form, one octet
+        (true, 1)
+    } else {
+        // Long form, first octet is the number of length octets
+        let mut v_length = v_length;
+        let mut length_len = 0;
+        while v_length > 0 {
+            v_length >>= 8;
+            length_len += 1;
+        }
+        (false, length_len)
+    };
 
-    buf.push(0x30); // SEQUENCE
-    buf.push((length - 2) as u8);
+    let length = length_len + v_length + 1;
+    let mut der = Vec::with_capacity(length);
 
-    buf.push(0x02); // INTEGER
-    buf.push((r.len() + r_sign.len()) as u8);
-    buf.extend(r_sign);
-    buf.extend(r);
+    der.push(SEQUENCE_TAG);
+    if short_form {
+        der.push(v_length as u8); // LENGTH - short form
+    } else {
+        der.push(0x80 | length_len as u8); // LENGTH - initial octet of long form
+        for i in (0..length_len).rev() {
+            der.push((v_length >> (i * 8)) as u8); // LENGTH - long form octets
+        }
+    }
 
-    buf.push(0x02); // INTEGER
-    buf.push((s.len() + s_sign.len()) as u8);
-    buf.extend(s_sign);
-    buf.extend(s);
+    der.push(INTEGER_TAG);
+    der.push((r.len() + r_sign.len()) as u8);
+    der.extend(r_sign);
+    der.extend(r);
 
-    buf
+    der.push(INTEGER_TAG);
+    der.push((s.len() + s_sign.len()) as u8);
+    der.extend(s_sign);
+    der.extend(s);
+    der
 }

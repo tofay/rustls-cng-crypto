@@ -279,13 +279,13 @@ fn test_sign_and_verify(
         .unwrap();
 
     for scheme in schemes {
-        sign_and_verify(our_signing_key.clone(), &theirs, *scheme, &cert);
-        sign_and_verify(their_signing_key.clone(), &ours, *scheme, &cert);
+        sign_and_verify(our_signing_key.as_ref(), &theirs, *scheme, &cert);
+        sign_and_verify(their_signing_key.as_ref(), &ours, *scheme, &cert);
     }
 }
 
 fn sign_and_verify(
-    signing_key: Arc<dyn SigningKey>,
+    signing_key: &dyn SigningKey,
     verifying_provider: &rustls::crypto::CryptoProvider,
     scheme: SignatureScheme,
     cert: &EndEntityCert<'_>,

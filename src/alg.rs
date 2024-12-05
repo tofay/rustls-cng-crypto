@@ -16,7 +16,7 @@ use windows::{
 /// A handle that, when dropped, will free all algorithm providers initialized by this crate.
 ///
 /// Where possible this crate aims to use the shared providers described in
-/// https://learn.microsoft.com/en-us/windows/win32/seccng/cng-algorithm-pseudo-handles.
+/// <https://learn.microsoft.com/en-us/windows/win32/seccng/cng-algorithm-pseudo-handles>.
 ///
 /// This should be created once at the start of the program and dropped at the end.
 pub struct ShutdownHandle {}
