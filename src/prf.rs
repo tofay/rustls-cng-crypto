@@ -5,8 +5,7 @@ use windows::{
     core::Owned,
     Win32::Security::Cryptography::{
         BCryptBuffer, BCryptBufferDesc, BCryptGenerateSymmetricKey, BCryptKeyDerivation,
-        BCRYPTBUFFER_VERSION,
-        KDF_HASH_ALGORITHM, KDF_TLS_PRF_LABEL, KDF_TLS_PRF_SEED,
+        BCRYPTBUFFER_VERSION, KDF_HASH_ALGORITHM, KDF_TLS_PRF_LABEL, KDF_TLS_PRF_SEED,
     },
 };
 
