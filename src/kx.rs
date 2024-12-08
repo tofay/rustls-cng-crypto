@@ -9,7 +9,7 @@ use windows::Win32::Security::Cryptography::{
 };
 
 use crate::alg;
-use crate::keys::import_ec_public_key;
+use crate::keys::import_ecdh_public_key;
 
 /// The maximum size of the shared secret produced by a supported key exchange group.
 const MAX_SECRET_SIZE: usize = 48;
@@ -83,10 +83,14 @@ impl SupportedKxGroup for KxGroup {
         let mut key_handle = Owned::default();
 
         unsafe {
-            let bits = self.key_bits();
-            BCryptGenerateKeyPair(self.alg_handle(), &mut *key_handle, bits as u32, 0)
-                .ok()
-                .map_err(|e| Error::General(format!("CNG error: {e}")))?;
+            BCryptGenerateKeyPair(
+                self.alg_handle(),
+                &mut *key_handle,
+                self.key_bits() as u32,
+                0,
+            )
+            .ok()
+            .map_err(|e| Error::General(format!("CNG error: {e}")))?;
             BCryptFinalizeKeyPair(*key_handle, 0)
                 .ok()
                 .map_err(|e| Error::General(format!("CNG error: {e}")))?;
@@ -127,6 +131,9 @@ impl SupportedKxGroup for KxGroup {
         if self.is_nist() {
             // Add the uncompressed format byte per RFC 8446 https://www.rfc-editor.org/rfc/rfc8446#section-4.2.8.2.
             public_key.insert(0, 0x04);
+        } else {
+            // X25519 is always 32 byte X co-ordinate, but CNG returns 64 bytes with a zero Y co-ordinate.
+            public_key.truncate(32);
         }
 
         Ok(Box::new(EcKeyExchange {
@@ -178,7 +185,7 @@ impl ActiveKeyExchange for EcKeyExchange {
             &[0; 32]
         };
 
-        let peer_key_handle = import_ec_public_key(self.kx_group.alg_handle(), x, y)?;
+        let peer_key_handle = import_ecdh_public_key(self.kx_group.alg_handle(), x, y)?;
 
         // Now derive the shared secret
         let mut secret = Owned::default();
@@ -227,7 +234,7 @@ mod test {
     use windows::core::Owned;
     use wycheproof::{ecdh::TestName, TestResult};
 
-    use crate::{keys::import_ec_private_key, kx::EcKeyExchange};
+    use crate::{keys::import_ecdh_private_key, kx::EcKeyExchange};
 
     #[test]
     fn secp256r1() {
@@ -246,7 +253,7 @@ mod test {
                     public_key: Vec::new(),
                 };
                 kx.key_handle =
-                    import_ec_private_key(kx.kx_group.alg_handle(), &test.private_key).unwrap();
+                    import_ecdh_private_key(kx.kx_group.alg_handle(), &test.private_key).unwrap();
 
                 let res = Box::new(kx).complete(&test.public_key);
                 let pub_key_uncompressed = test.public_key.first() == Some(&0x04);
@@ -268,11 +275,13 @@ mod test {
     fn x25519() {
         let test_set = wycheproof::xdh::TestSet::load(wycheproof::xdh::TestName::X25519).unwrap();
 
+        let mut counter = 0;
         for test_group in &test_set.test_groups {
             for test in &test_group.tests {
                 if test.private_key.len() != 32 {
                     continue;
                 }
+                counter += 1;
                 dbg!(test);
 
                 let mut kx = EcKeyExchange {
@@ -286,7 +295,7 @@ mod test {
                 key[0] &= 0xf8;
                 key[31] &= 0x7f;
                 key[31] |= 0x40;
-                kx.key_handle = import_ec_private_key(kx.kx_group.alg_handle(), &key).unwrap();
+                kx.key_handle = import_ecdh_private_key(kx.kx_group.alg_handle(), &key).unwrap();
 
                 let res = Box::new(kx).complete(&test.public_key);
 
@@ -317,5 +326,6 @@ mod test {
                 }
             }
         }
+        assert!(counter > 50);
     }
 }

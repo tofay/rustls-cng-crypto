@@ -1,7 +1,7 @@
 use crate::hash::{SHA256, SHA384, SHA512};
-use crate::keys::import_ec_private_key;
+use crate::keys::import_ecdsa_private_key;
 use pkcs1::der::Decode as _;
-use pkcs1::{ObjectIdentifier, UintRef};
+use pkcs1::ObjectIdentifier;
 use pkcs8::PrivateKeyInfo;
 use rustls::crypto::hash::Hash;
 use rustls::pki_types::PrivateKeyDer;
@@ -99,7 +99,7 @@ impl EcKey {
         };
 
         Ok(Self {
-            key: Arc::new(import_ec_private_key(alg_handle, private_key)?),
+            key: Arc::new(import_ecdsa_private_key(alg_handle, private_key)?),
             scheme,
         })
     }

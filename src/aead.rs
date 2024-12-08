@@ -2,9 +2,10 @@ use rustls::crypto::cipher::NONCE_LEN;
 use rustls::Error;
 use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
-    BCryptDecrypt, BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptSetProperty, BCRYPT_AES_GCM_ALG_HANDLE, BCRYPT_ALG_HANDLE,
-    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO, BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO_VERSION, BCRYPT_CHACHA20_POLY1305_ALG_HANDLE, BCRYPT_CHAINING_MODE,
-    BCRYPT_CHAIN_MODE_GCM, BCRYPT_FLAGS, BCRYPT_HANDLE, BCRYPT_KEY_HANDLE,
+    BCryptDecrypt, BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptSetProperty,
+    BCRYPT_AES_GCM_ALG_HANDLE, BCRYPT_ALG_HANDLE, BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO,
+    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO_VERSION, BCRYPT_CHACHA20_POLY1305_ALG_HANDLE,
+    BCRYPT_CHAINING_MODE, BCRYPT_CHAIN_MODE_GCM, BCRYPT_FLAGS, BCRYPT_HANDLE, BCRYPT_KEY_HANDLE,
 };
 
 use crate::to_null_terminated_le_bytes;
@@ -172,7 +173,7 @@ impl AeadKey {
                 BCRYPT_FLAGS::default(),
             )
             .ok()
-            .map_err(|e| Error::General(format!("AEAD encrypt error: {e}")))?;
+            .map_err(|e| Error::General(format!("AEAD decrypt error: {e}")))?;
         }
         size.try_into().map_err(|_| Error::DecryptError)
     }

@@ -69,8 +69,6 @@ pub(crate) fn tls12_kdf() -> BCRYPT_ALG_HANDLE {
 }
 
 /// Load an algorithm provider with specified flags, and optional property.
-///
-/// The algorithm handles are cached - callers mustn't call Free on the returned handle.
 fn load_algorithm(
     id: PCWSTR,
     flags: BCRYPT_OPEN_ALGORITHM_PROVIDER_FLAGS,

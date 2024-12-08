@@ -134,7 +134,7 @@ fn test_with_provider(
 // )]
 #[cfg_attr(
     feature = "tls12",
-    case::tls_ecdhe_rsa_with_aes_256_gcm_sha384(
+    case::tls_ecdhe_rsa_with_aes_256_gcm_sha384_x25519(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
         rustls_cng_crypto::kx_group::X25519,
         server::Alg::PKCS_RSA_SHA384,

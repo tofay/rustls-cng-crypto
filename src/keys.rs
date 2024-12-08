@@ -5,15 +5,12 @@ use rustls::Error;
 use windows::{
     core::{Owned, Param},
     Win32::Security::Cryptography::{
-        BCryptImportKeyPair, BCRYPT_ALG_HANDLE, BCRYPT_ECCKEY_BLOB,
-        BCRYPT_ECCPRIVATE_BLOB, BCRYPT_ECCPUBLIC_BLOB,
-        BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC, BCRYPT_ECDSA_PRIVATE_GENERIC_MAGIC,
-        BCRYPT_KEY_HANDLE, BCRYPT_RSAKEY_BLOB,
-        BCRYPT_RSAPRIVATE_BLOB, BCRYPT_RSAPRIVATE_MAGIC,
-        BCRYPT_RSA_ALG_HANDLE,
+        BCryptImportKeyPair, BCRYPT_ALG_HANDLE, BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPRIVATE_BLOB,
+        BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC,
+        BCRYPT_ECDSA_PRIVATE_GENERIC_MAGIC, BCRYPT_KEY_HANDLE, BCRYPT_RSAKEY_BLOB,
+        BCRYPT_RSAPRIVATE_BLOB, BCRYPT_RSAPRIVATE_MAGIC, BCRYPT_RSA_ALG_HANDLE,
     },
 };
-
 
 pub(crate) fn import_rsa_private_key(
     key: &RsaPrivateKey<'_>,
@@ -67,13 +64,30 @@ pub(crate) fn import_rsa_private_key(
     Ok(key_handle)
 }
 
-pub(crate) fn import_ec_private_key(
+pub(crate) fn import_ecdsa_private_key(
     alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
     private_key: &[u8],
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
+    import_ec_private_key(alg_handle, private_key, BCRYPT_ECDSA_PRIVATE_GENERIC_MAGIC)
+}
+
+#[cfg(test)]
+pub(crate) fn import_ecdh_private_key(
+    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    private_key: &[u8],
+) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
+    use windows::Win32::Security::Cryptography::BCRYPT_ECDH_PRIVATE_GENERIC_MAGIC;
+    import_ec_private_key(alg_handle, private_key, BCRYPT_ECDH_PRIVATE_GENERIC_MAGIC)
+}
+
+fn import_ec_private_key(
+    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    private_key: &[u8],
+    magic: u32,
+) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
     let key_len = private_key.len();
     let header = BCRYPT_ECCKEY_BLOB {
-        dwMagic: BCRYPT_ECDSA_PRIVATE_GENERIC_MAGIC,
+        dwMagic: magic,
         cbKey: key_len as u32,
     };
     let header_size = core::mem::size_of::<BCRYPT_ECCKEY_BLOB>();
@@ -102,7 +116,7 @@ pub(crate) fn import_ec_private_key(
     Ok(key_handle)
 }
 
-pub(crate) fn import_ec_public_key(
+pub(crate) fn import_ecdh_public_key(
     alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
     x: &[u8],
     y: &[u8],
@@ -117,7 +131,7 @@ pub(crate) fn import_ec_public_key(
         cbKey: key_len as u32,
     };
     let header_size = core::mem::size_of::<BCRYPT_ECCKEY_BLOB>();
-    let mut blob = Vec::with_capacity(header_size + key_len * 3);
+    let mut blob = Vec::with_capacity(header_size + key_len * 2);
     unsafe {
         let p: *const BCRYPT_ECCKEY_BLOB = &header;
         let p: *const u8 = p.cast::<u8>();
