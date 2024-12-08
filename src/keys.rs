@@ -1,14 +1,15 @@
 //! Import keys to CNG
 
-use pkcs1::RsaPrivateKey;
+use pkcs1::{RsaPrivateKey, RsaPublicKey};
 use rustls::Error;
 use windows::{
     core::{Owned, Param},
     Win32::Security::Cryptography::{
         BCryptImportKeyPair, BCRYPT_ALG_HANDLE, BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPRIVATE_BLOB,
         BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC,
-        BCRYPT_ECDSA_PRIVATE_GENERIC_MAGIC, BCRYPT_KEY_HANDLE, BCRYPT_RSAKEY_BLOB,
-        BCRYPT_RSAPRIVATE_BLOB, BCRYPT_RSAPRIVATE_MAGIC, BCRYPT_RSA_ALG_HANDLE,
+        BCRYPT_ECDSA_PRIVATE_GENERIC_MAGIC, BCRYPT_ECDSA_PUBLIC_GENERIC_MAGIC, BCRYPT_KEY_HANDLE,
+        BCRYPT_RSAKEY_BLOB, BCRYPT_RSAPRIVATE_BLOB, BCRYPT_RSAPRIVATE_MAGIC, BCRYPT_RSAPUBLIC_BLOB,
+        BCRYPT_RSAPUBLIC_MAGIC, BCRYPT_RSA_ALG_HANDLE,
     },
 };
 
@@ -54,6 +55,49 @@ pub(crate) fn import_rsa_private_key(
             BCRYPT_RSA_ALG_HANDLE,
             None,
             BCRYPT_RSAPRIVATE_BLOB,
+            &mut *key_handle,
+            &blob,
+            0,
+        )
+        .ok()
+        .map_err(|e| Error::General(format!("BCryptImportKeyPair error: {e}")))?;
+    }
+    Ok(key_handle)
+}
+
+pub(crate) fn import_rsa_public_key(
+    key: &RsaPublicKey<'_>,
+) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
+    let modulus = key.modulus.as_bytes();
+    let public_exponent = key.public_exponent.as_bytes();
+
+    let header = BCRYPT_RSAKEY_BLOB {
+        Magic: BCRYPT_RSAPUBLIC_MAGIC,
+        BitLength: modulus.len() as u32 * 8,
+        cbPublicExp: public_exponent.len() as u32,
+        cbModulus: modulus.len() as u32,
+        cbPrime1: 0,
+        cbPrime2: 0,
+    };
+
+    let size = core::mem::size_of::<BCRYPT_RSAKEY_BLOB>() + modulus.len() + public_exponent.len();
+    let mut blob = Vec::with_capacity(size);
+    unsafe {
+        let p: *const BCRYPT_RSAKEY_BLOB = &header;
+        let p: *const u8 = p.cast::<u8>();
+        let slice = std::slice::from_raw_parts(p, core::mem::size_of::<BCRYPT_RSAKEY_BLOB>());
+        blob.extend_from_slice(slice);
+    }
+
+    blob.extend_from_slice(public_exponent);
+    blob.extend_from_slice(modulus);
+
+    let mut key_handle = Owned::default();
+    unsafe {
+        BCryptImportKeyPair(
+            BCRYPT_RSA_ALG_HANDLE,
+            None,
+            BCRYPT_RSAPUBLIC_BLOB,
             &mut *key_handle,
             &blob,
             0,
@@ -121,13 +165,30 @@ pub(crate) fn import_ecdh_public_key(
     x: &[u8],
     y: &[u8],
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
+    import_ec_public_key(alg_handle, x, y, BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC)
+}
+
+pub(crate) fn import_ecdsa_public_key(
+    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    x: &[u8],
+    y: &[u8],
+) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
+    import_ec_public_key(alg_handle, x, y, BCRYPT_ECDSA_PUBLIC_GENERIC_MAGIC)
+}
+
+fn import_ec_public_key(
+    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    x: &[u8],
+    y: &[u8],
+    magic: u32,
+) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
     if x.len() != y.len() {
         return Err(Error::General("Invalid key length".to_string()));
     }
     let key_len = x.len();
 
     let header = BCRYPT_ECCKEY_BLOB {
-        dwMagic: BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC,
+        dwMagic: magic,
         cbKey: key_len as u32,
     };
     let header_size = core::mem::size_of::<BCRYPT_ECCKEY_BLOB>();

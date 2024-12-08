@@ -2,7 +2,6 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use openssl::pkey::PKey;
 use rcgen::SignatureAlgorithm;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::server::Acceptor;
@@ -132,15 +131,5 @@ impl TestPki {
 }
 
 fn generate_for(alg: Alg) -> rcgen::KeyPair {
-    if alg == Alg::PKCS_ED25519 {
-        // use openssl as openssl doesn't support the PKCS8v2 format which
-        // rcgen/ring produces: https://github.com/openssl/openssl/issues/10468
-        let key = PKey::generate_ed25519().unwrap();
-        let pem = key.private_key_to_pkcs8().unwrap();
-        let key = PrivatePkcs8KeyDer::from(&pem[..]);
-
-        rcgen::KeyPair::from_pkcs8_der_and_sign_algo(&key, alg.to_rcgen_algorithm()).unwrap()
-    } else {
-        rcgen::KeyPair::generate_for(alg.to_rcgen_algorithm()).unwrap()
-    }
+    rcgen::KeyPair::generate_for(alg.to_rcgen_algorithm()).unwrap()
 }

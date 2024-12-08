@@ -1,19 +1,21 @@
 use core::fmt;
-use openssl::{
-    bn::BigNumContext,
-    ec::{EcGroup, EcKey, EcPoint},
-    hash::MessageDigest,
-    nid::Nid,
-    pkey::{Id, PKey, Public},
-    rsa::{Padding, Rsa},
-    sign::{RsaPssSaltlen, Verifier},
-};
+use pkcs1::RsaPublicKey;
 use rustls::{
-    crypto::WebPkiSupportedAlgorithms,
+    crypto::{hash::Hash as _, WebPkiSupportedAlgorithms},
     pki_types::{AlgorithmIdentifier, InvalidSignature, SignatureVerificationAlgorithm},
     SignatureScheme,
 };
 use webpki::alg_id;
+use windows::Win32::Security::Cryptography::{
+    BCryptGetProperty, BCryptVerifySignature, BCRYPT_ALG_HANDLE, BCRYPT_ECDSA_P256_ALG_HANDLE,
+    BCRYPT_ECDSA_P384_ALG_HANDLE, BCRYPT_ECDSA_P521_ALG_HANDLE, BCRYPT_FLAGS, BCRYPT_KEY_LENGTH,
+    BCRYPT_PAD_PKCS1, BCRYPT_PAD_PSS, BCRYPT_PKCS1_PADDING_INFO, BCRYPT_PSS_PADDING_INFO,
+};
+
+use crate::{
+    hash::{Algorithm as HashAlgorithm, Hash, SHA256, SHA384, SHA512},
+    keys::{import_ecdsa_public_key, import_rsa_public_key},
+};
 
 /// A [`WebPkiSupportedAlgorithms`] value defining the supported signature algorithms.
 pub static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
@@ -25,7 +27,7 @@ pub static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgori
         ECDSA_P521_SHA256,
         ECDSA_P521_SHA384,
         ECDSA_P521_SHA512,
-        ED25519,
+        // ED25519,
         RSA_PSS_SHA512,
         RSA_PSS_SHA384,
         RSA_PSS_SHA256,
@@ -44,7 +46,7 @@ pub static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgori
             &[ECDSA_P256_SHA256, ECDSA_P384_SHA256, ECDSA_P521_SHA256],
         ),
         (SignatureScheme::ECDSA_NISTP521_SHA512, &[ECDSA_P521_SHA512]),
-        (SignatureScheme::ED25519, &[ED25519]),
+        //(SignatureScheme::ED25519, &[ED25519]),
         (SignatureScheme::RSA_PSS_SHA512, &[RSA_PSS_SHA512]),
         (SignatureScheme::RSA_PSS_SHA384, &[RSA_PSS_SHA384]),
         (SignatureScheme::RSA_PSS_SHA256, &[RSA_PSS_SHA256]),
@@ -55,110 +57,138 @@ pub static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgori
 };
 
 /// RSA PKCS#1 1.5 signatures using SHA-256.
-pub(crate) static RSA_PKCS1_SHA256: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static RSA_PKCS1_SHA256: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "RSA_PKCS1_SHA256",
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PKCS1_SHA256,
+    hash: SHA256,
+    params: Params::Rsa(RsaPadding::PKCS1),
 };
 
 /// RSA PKCS#1 1.5 signatures using SHA-384.
-pub(crate) static RSA_PKCS1_SHA384: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static RSA_PKCS1_SHA384: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "RSA_PKCS1_SHA384",
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PKCS1_SHA384,
+    hash: SHA384,
+    params: Params::Rsa(RsaPadding::PKCS1),
 };
 
 /// RSA PKCS#1 1.5 signatures using SHA-512.
-pub(crate) static RSA_PKCS1_SHA512: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static RSA_PKCS1_SHA512: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "RSA_PKCS1_SHA512",
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PKCS1_SHA512,
+    hash: SHA512,
+    params: Params::Rsa(RsaPadding::PKCS1),
 };
 
 /// RSA PSS signatures using SHA-256.
-pub(crate) static RSA_PSS_SHA256: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static RSA_PSS_SHA256: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "RSA_PSS_SHA256",
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PSS_SHA256,
+    hash: SHA256,
+    params: Params::Rsa(RsaPadding::Pss),
 };
 
 /// RSA PSS signatures using SHA-384.
-pub(crate) static RSA_PSS_SHA384: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static RSA_PSS_SHA384: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "RSA_PSS_SHA384",
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PSS_SHA384,
+    hash: SHA384,
+    params: Params::Rsa(RsaPadding::Pss),
 };
 
 /// RSA PSS signatures using SHA-512.
-pub(crate) static RSA_PSS_SHA512: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static RSA_PSS_SHA512: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "RSA_PSS_SHA512",
     public_key_alg_id: alg_id::RSA_ENCRYPTION,
     signature_alg_id: alg_id::RSA_PSS_SHA512,
+    hash: SHA512,
+    params: Params::Rsa(RsaPadding::Pss),
 };
 
-/// ED25519 signatures according to RFC 8410
-pub(crate) static ED25519: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
-    display_name: "ED25519",
-    public_key_alg_id: alg_id::ED25519,
-    signature_alg_id: alg_id::ED25519,
-};
+// /// ED25519 signatures according to RFC 8410
+// pub(crate) static ED25519: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+//     display_name: "ED25519",
+//     public_key_alg_id: alg_id::ED25519,
+//     signature_alg_id: alg_id::ED25519,
+// };
 
 /// ECDSA signatures using the P-256 curve and SHA-256.
-pub(crate) static ECDSA_P256_SHA256: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static ECDSA_P256_SHA256: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "ECDSA_P256_SHA256",
     public_key_alg_id: alg_id::ECDSA_P256,
     signature_alg_id: alg_id::ECDSA_SHA256,
+    hash: SHA256,
+    params: Params::Ecdsa(BCRYPT_ECDSA_P256_ALG_HANDLE),
 };
 
 /// ECDSA signatures using the P-256 curve and SHA-384. Deprecated.
-pub(crate) static ECDSA_P256_SHA384: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static ECDSA_P256_SHA384: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "ECDSA_P256_SHA384",
     public_key_alg_id: alg_id::ECDSA_P256,
     signature_alg_id: alg_id::ECDSA_SHA384,
+    hash: SHA384,
+    params: Params::Ecdsa(BCRYPT_ECDSA_P256_ALG_HANDLE),
 };
 
 /// ECDSA signatures using the P-384 curve and SHA-256. Deprecated.
-pub(crate) static ECDSA_P384_SHA256: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static ECDSA_P384_SHA256: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "ECDSA_P384_SHA256",
     public_key_alg_id: alg_id::ECDSA_P384,
     signature_alg_id: alg_id::ECDSA_SHA256,
+    hash: SHA256,
+    params: Params::Ecdsa(BCRYPT_ECDSA_P384_ALG_HANDLE),
 };
 
 /// ECDSA signatures using the P-384 curve and SHA-384.
-pub(crate) static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "ECDSA_P384_SHA384",
     public_key_alg_id: alg_id::ECDSA_P384,
     signature_alg_id: alg_id::ECDSA_SHA384,
+    hash: SHA384,
+    params: Params::Ecdsa(BCRYPT_ECDSA_P384_ALG_HANDLE),
 };
 
 /// ECDSA signatures using the P-521 curve and SHA-256.
-pub(crate) static ECDSA_P521_SHA256: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static ECDSA_P521_SHA256: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "ECDSA_P521_SHA256",
     public_key_alg_id: alg_id::ECDSA_P521,
     signature_alg_id: alg_id::ECDSA_SHA256,
+    hash: SHA256,
+    params: Params::Ecdsa(BCRYPT_ECDSA_P521_ALG_HANDLE),
 };
 
 /// ECDSA signatures using the P-521 curve and SHA-384.
-pub(crate) static ECDSA_P521_SHA384: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static ECDSA_P521_SHA384: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "ECDSA_P521_SHA384",
     public_key_alg_id: alg_id::ECDSA_P521,
     signature_alg_id: alg_id::ECDSA_SHA384,
+    hash: SHA384,
+    params: Params::Ecdsa(BCRYPT_ECDSA_P521_ALG_HANDLE),
 };
 
 /// ECDSA signatures using the P-521 curve and SHA-512.
-pub(crate) static ECDSA_P521_SHA512: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+pub(crate) static ECDSA_P521_SHA512: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
     display_name: "ECDSA_P521_SHA512",
     public_key_alg_id: alg_id::ECDSA_P521,
     signature_alg_id: alg_id::ECDSA_SHA512,
+    hash: SHA512,
+    params: Params::Ecdsa(BCRYPT_ECDSA_P521_ALG_HANDLE),
 };
 
-struct OpenSslAlgorithm {
+struct VerificationAlgorithm<const HASH_SIZE: usize> {
     display_name: &'static str,
     public_key_alg_id: AlgorithmIdentifier,
     signature_alg_id: AlgorithmIdentifier,
+    hash: HashAlgorithm<HASH_SIZE>,
+    params: Params,
 }
 
-impl fmt::Debug for OpenSslAlgorithm {
+impl<const HASH_SIZE: usize> fmt::Debug for VerificationAlgorithm<HASH_SIZE> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -168,80 +198,21 @@ impl fmt::Debug for OpenSslAlgorithm {
     }
 }
 
-fn ecdsa_public_key(curve_name: Nid, public_key: &[u8]) -> Result<PKey<Public>, InvalidSignature> {
-    EcGroup::from_curve_name(curve_name)
-        .and_then(|group| {
-            let mut ctx = BigNumContext::new()?;
-            let point = EcPoint::from_bytes(&group, public_key, &mut ctx)?;
-            let key = EcKey::from_public_key(&group, &point)?;
-            key.try_into()
-        })
-        .map_err(|_| InvalidSignature)
+enum Params {
+    Rsa(RsaPadding),
+    Ecdsa(BCRYPT_ALG_HANDLE),
 }
 
-impl OpenSslAlgorithm {
-    fn public_key(&self, public_key: &[u8]) -> Result<PKey<Public>, InvalidSignature> {
-        match self.public_key_alg_id {
-            alg_id::RSA_ENCRYPTION => Rsa::public_key_from_der_pkcs1(public_key)
-                .and_then(std::convert::TryInto::try_into)
-                .map_err(|_| InvalidSignature),
-            alg_id::ECDSA_P521 => ecdsa_public_key(Nid::SECP521R1, public_key),
-            alg_id::ECDSA_P384 => ecdsa_public_key(Nid::SECP384R1, public_key),
-            alg_id::ECDSA_P256 => ecdsa_public_key(Nid::X9_62_PRIME256V1, public_key),
-            alg_id::ED25519 => PKey::public_key_from_raw_bytes(public_key, Id::ED25519)
-                .map_err(|_| InvalidSignature),
+unsafe impl Send for Params {}
+unsafe impl Sync for Params {}
 
-            _ => Err(InvalidSignature),
-        }
-    }
-
-    fn message_digest(&self) -> Option<MessageDigest> {
-        match self.signature_alg_id {
-            alg_id::RSA_PKCS1_SHA256 | alg_id::ECDSA_SHA256 | alg_id::RSA_PSS_SHA256 => {
-                Some(MessageDigest::sha256())
-            }
-            alg_id::RSA_PKCS1_SHA384 | alg_id::ECDSA_SHA384 | alg_id::RSA_PSS_SHA384 => {
-                Some(MessageDigest::sha384())
-            }
-            alg_id::RSA_PKCS1_SHA512 | alg_id::ECDSA_SHA512 | alg_id::RSA_PSS_SHA512 => {
-                Some(MessageDigest::sha512())
-            }
-            _ => None,
-        }
-    }
-
-    fn mgf1(&self) -> Option<MessageDigest> {
-        match self.signature_alg_id {
-            alg_id::RSA_PSS_SHA256 => Some(MessageDigest::sha256()),
-            alg_id::RSA_PSS_SHA384 => Some(MessageDigest::sha384()),
-            alg_id::RSA_PSS_SHA512 => Some(MessageDigest::sha512()),
-            _ => None,
-        }
-    }
-
-    fn pss_salt_len(&self) -> Option<RsaPssSaltlen> {
-        match self.signature_alg_id {
-            alg_id::RSA_PSS_SHA256 | alg_id::RSA_PSS_SHA384 | alg_id::RSA_PSS_SHA512 => {
-                Some(RsaPssSaltlen::DIGEST_LENGTH)
-            }
-            _ => None,
-        }
-    }
-
-    fn rsa_padding(&self) -> Option<Padding> {
-        match self.signature_alg_id {
-            alg_id::RSA_PSS_SHA512 | alg_id::RSA_PSS_SHA384 | alg_id::RSA_PSS_SHA256 => {
-                Some(Padding::PKCS1_PSS)
-            }
-            alg_id::RSA_PKCS1_SHA512 | alg_id::RSA_PKCS1_SHA384 | alg_id::RSA_PKCS1_SHA256 => {
-                Some(Padding::PKCS1)
-            }
-            _ => None,
-        }
-    }
+#[derive(Debug)]
+enum RsaPadding {
+    PKCS1,
+    Pss,
 }
 
-impl SignatureVerificationAlgorithm for OpenSslAlgorithm {
+impl<const HASH_SIZE: usize> SignatureVerificationAlgorithm for VerificationAlgorithm<HASH_SIZE> {
     fn public_key_alg_id(&self) -> AlgorithmIdentifier {
         self.public_key_alg_id
     }
@@ -256,56 +227,110 @@ impl SignatureVerificationAlgorithm for OpenSslAlgorithm {
         message: &[u8],
         signature: &[u8],
     ) -> Result<(), InvalidSignature> {
-        if matches!(
-            self.public_key_alg_id,
-            alg_id::ECDSA_P256 | alg_id::ECDSA_P384 | alg_id::ECDSA_P521
-        ) {
-            // Restrict the allowed encodings of EC public keys.
-            //
-            // "The first octet of the OCTET STRING indicates whether the key is
-            //  compressed or uncompressed.  The uncompressed form is indicated
-            //  by 0x04 and the compressed form is indicated by either 0x02 or
-            //  0x03 (see 2.3.3 in [SEC1]).  The public key MUST be rejected if
-            //  any other value is included in the first octet."
-            // -- <https://datatracker.ietf.org/doc/html/rfc5480#section-2.2>
-            match public_key.first() {
-                Some(0x02..=0x04) => {}
-                _ => {
-                    return Err(InvalidSignature);
-                }
-            };
-        }
-        let pkey = self.public_key(public_key)?;
+        let hash = self.hash.hash(message);
 
-        if let Some(message_digest) = self.message_digest() {
-            Verifier::new(message_digest, &pkey).and_then(|mut verifier| {
-                if let Some(padding) = self.rsa_padding() {
-                    verifier.set_rsa_padding(padding)?;
+        match &self.params {
+            Params::Rsa(padding) => {
+                let key = RsaPublicKey::try_from(public_key).map_err(|_| InvalidSignature)?;
+                let handle = import_rsa_public_key(&key).map_err(|_| InvalidSignature)?;
+
+                match padding {
+                    RsaPadding::PKCS1 => {
+                        let padding_info = BCRYPT_PKCS1_PADDING_INFO {
+                            pszAlgId: self.hash.hash_id(),
+                        };
+                        unsafe {
+                            BCryptVerifySignature(
+                                *handle,
+                                Some(std::ptr::from_ref(&padding_info) as *mut _),
+                                hash.as_ref(),
+                                signature,
+                                BCRYPT_PAD_PKCS1,
+                            )
+                            .ok()
+                            .map_err(|_| InvalidSignature)
+                        }
+                    }
+                    RsaPadding::Pss => {
+                        let padding_info = BCRYPT_PSS_PADDING_INFO {
+                            pszAlgId: self.hash.hash_id(),
+                            cbSalt: HASH_SIZE as u32,
+                        };
+                        unsafe {
+                            BCryptVerifySignature(
+                                *handle,
+                                Some(std::ptr::from_ref(&padding_info) as *mut _),
+                                hash.as_ref(),
+                                signature,
+                                BCRYPT_PAD_PSS,
+                            )
+                            .ok()
+                            .map_err(|e| {
+                                dbg!(e);
+                                InvalidSignature
+                            })
+                        }
+                    }
                 }
-                if let Some(mgf1_md) = self.mgf1() {
-                    verifier.set_rsa_mgf1_md(mgf1_md)?;
+            }
+            Params::Ecdsa(handle) => {
+                // Require uncompressed byte, then strip it
+                let public_key = if public_key.first() == Some(&0x04) {
+                    Ok(&public_key[1..])
+                } else {
+                    Err(InvalidSignature)
+                }?;
+
+                let n = public_key.len();
+                let x = &public_key[..n / 2];
+                let y = &public_key[n / 2..];
+
+                let key = import_ecdsa_public_key(*handle, x, y).map_err(|_| InvalidSignature)?;
+
+                // convert asn1 signature to raw signature, using the fact that RsaPublicKey ASN.1 is
+                // identical to the signature we are verifying
+                let parsed_signature =
+                    RsaPublicKey::try_from(signature).map_err(|_| InvalidSignature)?;
+                let r = parsed_signature.modulus.as_bytes();
+                let s = parsed_signature.public_exponent.as_bytes();
+                let bit_size = unsafe {
+                    let mut bytes = [0u8; 4];
+                    BCryptGetProperty(*key, BCRYPT_KEY_LENGTH, Some(&mut bytes), &mut 0, 0)
+                        .ok()
+                        .map_err(|_| InvalidSignature)?;
+                    u32::from_le_bytes(bytes) as usize
+                };
+                let size = (bit_size + 7) / 8;
+
+                // r and s are expected to be the same size as the curve size
+                let mut signature = Vec::with_capacity(size * 2);
+                if r.len() < size {
+                    for _ in 0..size - r.len() {
+                        signature.push(0);
+                    }
                 }
-                if let Some(salt_len) = self.pss_salt_len() {
-                    verifier.set_rsa_pss_saltlen(salt_len)?;
+                signature.extend_from_slice(r);
+                if s.len() < size {
+                    for _ in 0..size - s.len() {
+                        signature.push(0);
+                    }
                 }
-                verifier.update(message)?;
-                verifier.verify(signature)
-            })
-        } else {
-            Verifier::new_without_digest(&pkey)
-                .and_then(|mut verifier| verifier.verify_oneshot(signature, message))
+                signature.extend_from_slice(s);
+
+                unsafe {
+                    BCryptVerifySignature(*key, None, hash.as_ref(), &signature, BCRYPT_FLAGS(0))
+                        .ok()
+                        .map_err(|_| InvalidSignature)
+                }
+            }
         }
-        .map_err(|e| {
-            std::dbg!(e);
-            InvalidSignature
-        })
-        .and_then(|valid| if valid { Ok(()) } else { Err(InvalidSignature) })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wycheproof::TestResult;
 
     #[test]
     fn test_open_ssl_algorithm_debug() {
@@ -317,5 +342,101 @@ mod tests {
             format!("{RSA_PSS_SHA256:?}"),
             "rustls_cng_crypto Signature Verification Algorithm: RSA_PSS_SHA256"
         );
+    }
+
+    #[test]
+    fn algorithm_implements_debug() {
+        assert_eq!(
+            format!("{ECDSA_P256_SHA256:?}"),
+            "rustls_cng_crypto Signature Verification Algorithm: ECDSA_P256_SHA256"
+        );
+        assert_eq!(
+            format!("{RSA_PSS_SHA256:?}"),
+            "rustls_cng_crypto Signature Verification Algorithm: RSA_PSS_SHA256"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::sha256(RSA_PKCS1_SHA256, &[wycheproof::rsa_pkcs1_verify::TestName::Rsa2048Sha256, wycheproof::rsa_pkcs1_verify::TestName::Rsa3072Sha256])]
+    #[case::sha256(RSA_PKCS1_SHA384, &[wycheproof::rsa_pkcs1_verify::TestName::Rsa2048Sha384, wycheproof::rsa_pkcs1_verify::TestName::Rsa3072Sha384])]
+    #[case::sha256(RSA_PKCS1_SHA512, &[wycheproof::rsa_pkcs1_verify::TestName::Rsa2048Sha512, wycheproof::rsa_pkcs1_verify::TestName::Rsa3072Sha512])]
+
+    fn rsa_pkcs1(
+        #[case] alg: &dyn SignatureVerificationAlgorithm,
+        #[case] names: &[wycheproof::rsa_pkcs1_verify::TestName],
+    ) {
+        for name in names {
+            let test_set = wycheproof::rsa_pkcs1_verify::TestSet::load(*name).unwrap();
+            for test_group in test_set.test_groups {
+                for test in test_group.tests {
+                    let res = alg.verify_signature(&test_group.asn_key, &test.msg, &test.sig);
+                    match &test.result {
+                        TestResult::Acceptable | TestResult::Valid => {
+                            assert!(res.is_ok(), "Failed test: {:?}", test);
+                        }
+                        TestResult::Invalid => {
+                            assert!(res.is_err(), "Failed test: {:?}", test);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::sha256(RSA_PSS_SHA256, &[wycheproof::rsa_pss_verify::TestName::RsaPss2048Sha256Mgf1SaltLen32, wycheproof::rsa_pss_verify::TestName::RsaPss3072Sha256Mgf1SaltLen32])]
+    #[case::sha384(RSA_PSS_SHA384, &[wycheproof::rsa_pss_verify::TestName::RsaPss2048Sha384Mgf1SaltLen48, wycheproof::rsa_pss_verify::TestName::RsaPss4096Sha384Mgf1SaltLen48])]
+    #[case::sha512(RSA_PSS_SHA512, &[wycheproof::rsa_pss_verify::TestName::RsaPss4096Sha512Mgf1SaltLen64])]
+    fn rsa_pss(
+        #[case] alg: &dyn SignatureVerificationAlgorithm,
+        #[case] names: &[wycheproof::rsa_pss_verify::TestName],
+    ) {
+        use wycheproof::TestResult;
+
+        for name in names {
+            let test_set = wycheproof::rsa_pss_verify::TestSet::load(*name).unwrap();
+            for test_group in test_set.test_groups {
+                for test in test_group.tests {
+                    let res = alg.verify_signature(&test_group.asn_key, &test.msg, &test.sig);
+                    match &test.result {
+                        TestResult::Acceptable | TestResult::Valid => {
+                            assert!(res.is_ok(), "Failed test: {:?}", test);
+                        }
+                        TestResult::Invalid => {
+                            assert!(res.is_err(), "Failed test: {:?}", test);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::p256_sha256(ECDSA_P256_SHA256, wycheproof::ecdsa::TestName::EcdsaSecp256r1Sha256)]
+    #[case::p384_sha256(ECDSA_P384_SHA256, wycheproof::ecdsa::TestName::EcdsaSecp384r1Sha256)]
+    #[case::p384_sha384(ECDSA_P384_SHA384, wycheproof::ecdsa::TestName::EcdsaSecp384r1Sha384)]
+    #[case::p521_sha512(ECDSA_P521_SHA512, wycheproof::ecdsa::TestName::EcdsaSecp521r1Sha512)]
+    fn ecdsa(
+        #[case] alg: &dyn SignatureVerificationAlgorithm,
+        #[case] name: wycheproof::ecdsa::TestName,
+    ) {
+        use wycheproof::ecdsa::TestFlag;
+
+        let test_set = wycheproof::ecdsa::TestSet::load(name).unwrap();
+        for test_group in test_set.test_groups {
+            for test in test_group.tests {
+                let res = alg.verify_signature(&test_group.key.key, &test.msg, &test.sig);
+                let expected_failure = test.flags.contains(&TestFlag::EdgeCaseShamirMultiplication);
+
+                match (&test.result, expected_failure) {
+                    (TestResult::Acceptable, false) | (TestResult::Valid, false) => {
+                        assert!(res.is_ok(), "Failed test: {:?}", test);
+                    }
+                    _ => {
+                        assert!(res.is_err(), "Failed test: {:?}", test);
+                    }
+                }
+            }
+        }
     }
 }
