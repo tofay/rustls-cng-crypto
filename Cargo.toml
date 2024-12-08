@@ -1,7 +1,7 @@
 [package]
 name = "rustls-cng-crypto"
 authors = ["Tom Fay <tom@teamfay.co.uk>"]
-version = "0.0.1"
+version = "0.0.2-docs"
 edition = "2021"
 license = "MIT"
 description = "Rustls crypto provider for CNG"
@@ -50,3 +50,6 @@ wycheproof = { version = "0.6.0", default-features = false, features = [
     "rsa_sig",
     "xdh",
 ] }
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
