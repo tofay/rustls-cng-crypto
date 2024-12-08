@@ -6,8 +6,7 @@ use rustls::{
 use windows::{
     core::Owned,
     Win32::Security::Cryptography::{
-        BCryptEncrypt, BCryptGenerateSymmetricKey,
-        BCRYPT_AES_CBC_ALG_HANDLE, BCRYPT_ALG_HANDLE,
+        BCryptEncrypt, BCryptGenerateSymmetricKey, BCRYPT_AES_CBC_ALG_HANDLE, BCRYPT_ALG_HANDLE,
         BCRYPT_FLAGS, BCRYPT_KEY_HANDLE,
     },
 };

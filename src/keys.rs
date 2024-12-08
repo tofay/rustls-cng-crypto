@@ -13,6 +13,13 @@ use windows::{
     },
 };
 
+/// Wrapper for an owned key handle that can be sent between threads.
+#[derive(Debug)]
+pub(crate) struct KeyWrapper(pub(crate) Owned<BCRYPT_KEY_HANDLE>);
+
+unsafe impl Send for KeyWrapper {}
+unsafe impl Sync for KeyWrapper {}
+
 pub(crate) fn import_rsa_private_key(
     key: &RsaPrivateKey<'_>,
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {

@@ -2,13 +2,11 @@ use rustls::crypto::cipher::NONCE_LEN;
 use rustls::Error;
 use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
-    BCryptDecrypt, BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptSetProperty,
-    BCRYPT_AES_GCM_ALG_HANDLE, BCRYPT_ALG_HANDLE, BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO,
+    BCryptDecrypt, BCryptEncrypt, BCryptGenerateSymmetricKey, BCRYPT_AES_GCM_ALG_HANDLE,
+    BCRYPT_ALG_HANDLE, BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO,
     BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO_VERSION, BCRYPT_CHACHA20_POLY1305_ALG_HANDLE,
-    BCRYPT_CHAINING_MODE, BCRYPT_CHAIN_MODE_GCM, BCRYPT_FLAGS, BCRYPT_HANDLE, BCRYPT_KEY_HANDLE,
+    BCRYPT_FLAGS, BCRYPT_KEY_HANDLE,
 };
-
-use crate::to_null_terminated_le_bytes;
 
 /// The tag length is 16 bytes for all supported ciphers.
 pub(crate) const TAG_LEN: usize = 16;
@@ -71,17 +69,17 @@ impl Algorithm {
                 .ok()
                 .map_err(|e| Error::General(format!("AEAD key import error: {e}")))?;
 
-            if self.is_aes {
-                let bcrypt_handle = BCRYPT_HANDLE(&mut *key_handle.0);
-                BCryptSetProperty(
-                    bcrypt_handle,
-                    BCRYPT_CHAINING_MODE,
-                    &to_null_terminated_le_bytes(BCRYPT_CHAIN_MODE_GCM),
-                    0,
-                )
-                .ok()
-                .map_err(|e| Error::General(format!("AEAD set chaining mode error: {e}")))?;
-            }
+            // if self.is_aes {
+            //     let bcrypt_handle = BCRYPT_HANDLE(&mut *key_handle.0);
+            //     BCryptSetProperty(
+            //         bcrypt_handle,
+            //         BCRYPT_CHAINING_MODE,
+            //         &to_null_terminated_le_bytes(BCRYPT_CHAIN_MODE_GCM),
+            //         0,
+            //     )
+            //     .ok()
+            //     .map_err(|e| Error::General(format!("AEAD set chaining mode error: {e}")))?;
+            // }
         }
         Ok(AeadKey { handle: key_handle })
     }

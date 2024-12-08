@@ -4,14 +4,13 @@ use pkcs8::PrivateKeyInfo;
 use rustls::pki_types::PrivateKeyDer;
 use rustls::{Error, SignatureAlgorithm, SignatureScheme};
 use std::sync::Arc;
-use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
-    BCryptSignHash, BCRYPT_KEY_HANDLE, BCRYPT_PAD_PKCS1, BCRYPT_PAD_PSS, BCRYPT_PKCS1_PADDING_INFO,
+    BCryptSignHash, BCRYPT_PAD_PKCS1, BCRYPT_PAD_PSS, BCRYPT_PKCS1_PADDING_INFO,
     BCRYPT_PSS_PADDING_INFO,
 };
 
 use crate::hash::{Hash, SHA256, SHA384, SHA512};
-use crate::keys::import_rsa_private_key;
+use crate::keys::{import_rsa_private_key, KeyWrapper};
 
 /// RSA schemes in descending order of preference
 pub(crate) static RSA_SCHEMES: &[SignatureScheme] = &[
@@ -42,7 +41,7 @@ enum RsaPadding {
 /// A key that can be used for signing any RSA scheme
 #[derive(Debug)]
 pub(super) struct RsaSigningKey {
-    key: Arc<Owned<BCRYPT_KEY_HANDLE>>,
+    key: Arc<KeyWrapper>,
 }
 
 impl RsaSigningKey {
@@ -61,7 +60,7 @@ impl RsaSigningKey {
         }?;
 
         Ok(Self {
-            key: Arc::new(import_rsa_private_key(&key)?),
+            key: Arc::new(KeyWrapper(import_rsa_private_key(&key)?)),
         })
     }
 }
@@ -74,7 +73,10 @@ impl rustls::sign::SigningKey for RsaSigningKey {
         RSA_SCHEMES
             .iter()
             .find(|scheme| offered.contains(scheme))
-            .map(|scheme| RsaSigner::new(Arc::clone(&self.key), *scheme))
+            .map(|scheme| {
+                Box::new(RsaSigner::new(Arc::clone(&self.key), *scheme))
+                    as Box<dyn rustls::sign::Signer>
+            })
     }
 
     fn algorithm(&self) -> SignatureAlgorithm {
@@ -85,22 +87,19 @@ impl rustls::sign::SigningKey for RsaSigningKey {
 /// A key that can be used for signing a specific RSA scheme
 #[derive(Debug)]
 struct RsaSigner {
-    key: Arc<Owned<BCRYPT_KEY_HANDLE>>,
+    key: Arc<KeyWrapper>,
     scheme: SignatureScheme,
     params: RsaParams,
 }
 
 impl RsaSigner {
-    fn new(
-        key: Arc<Owned<BCRYPT_KEY_HANDLE>>,
-        scheme: SignatureScheme,
-    ) -> Box<dyn rustls::sign::Signer> {
+    fn new(key: Arc<KeyWrapper>, scheme: SignatureScheme) -> Self {
         let params = scheme.rsa_params().unwrap();
-        Box::new(Self {
+        Self {
             key,
             scheme,
             params,
-        })
+        }
     }
 }
 
@@ -118,7 +117,7 @@ impl rustls::sign::Signer for RsaSigner {
                 unsafe {
                     let mut size = 0u32;
                     BCryptSignHash(
-                        **self.key,
+                        *self.key.0,
                         Some(std::ptr::from_ref(&padding_info) as *mut _),
                         hash.as_ref(),
                         None,
@@ -129,7 +128,7 @@ impl rustls::sign::Signer for RsaSigner {
                     .and_then(|()| {
                         let mut output = vec![0u8; size as usize];
                         BCryptSignHash(
-                            **self.key,
+                            *self.key.0,
                             Some(std::ptr::from_ref(&padding_info) as *mut _),
                             hash.as_ref(),
                             Some(&mut output),
@@ -150,7 +149,7 @@ impl rustls::sign::Signer for RsaSigner {
                 unsafe {
                     let mut size = 0u32;
                     BCryptSignHash(
-                        **self.key,
+                        *self.key.0,
                         Some(std::ptr::from_ref(&padding_info) as *mut _),
                         hash.as_ref(),
                         None,
@@ -161,7 +160,7 @@ impl rustls::sign::Signer for RsaSigner {
                     .and_then(|()| {
                         let mut output = vec![0u8; size as usize];
                         BCryptSignHash(
-                            **self.key,
+                            *self.key.0,
                             Some(std::ptr::from_ref(&padding_info) as *mut _),
                             hash.as_ref(),
                             Some(&mut output),

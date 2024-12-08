@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 mod ec;
 mod rsa;
+#[cfg(feature = "tls12")]
 pub(crate) use rsa::RSA_SCHEMES;
 
 /// A struct that implements [`rustls::crypto::KeyProvider`].

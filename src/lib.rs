@@ -1,13 +1,11 @@
-//! # rustls-openssl
+//! # rustls-cng-crypto
 //!
-//! A [rustls crypto provider](https://docs.rs/rustls/latest/rustls/crypto/struct.CryptoProvider.html)  that uses OpenSSL for crypto.
+//! A [rustls crypto provider](https://docs.rs/rustls/latest/rustls/crypto/struct.CryptoProvider.html) for Windows that uses CNG for crypto.
 //!
 //! ## Supported Ciphers
 //!
 //! Supported cipher suites are listed below, in descending order of preference.
 //!
-//! If OpenSSL is compiled with the `OPENSSL_NO_CHACHA` option, or the `fips` feature is enabled,
-//! then the suites using ChaCha20-Poly1305 will not be available.
 //! If the `tls12` feature is disabled then the TLS 1.2 cipher suites will not be available.
 //!
 //! ### TLS 1.3
@@ -29,15 +27,13 @@
 //!
 //! In descending order of preference:
 //!
-//! * SECP384R1
-//! * SECP256R1
 //! * X25519
-//!
-//! If the `fips` feature is enabled then X25519 will not be available.
+//! * SECP256R1
+//! * SECP384R1
 //!
 //! ## Usage
 //!
-//! Add `rustls-openssl` to your `Cargo.toml`:
+//! Add `rustls-cng-crypto` to your `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
@@ -52,12 +48,10 @@
 //!
 //! # Features
 //! - `tls12`: Enables TLS 1.2 cipher suites. Enabled by default.
-//! - `fips`: Enabling this feature removes non-FIPS-approved cipher suites and key exchanges. Disabled by default. See [fips].
 #![warn(missing_docs)]
 use rustls::crypto::{CryptoProvider, GetRandomFailed, SupportedKxGroup};
 use rustls::SupportedCipherSuite;
 
-use windows::core::PCWSTR;
 use windows::Win32::Security::Cryptography::{
     BCryptGenRandom, BCRYPT_ALG_HANDLE, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
 };
@@ -96,13 +90,12 @@ pub use alg::ShutdownHandle;
 pub use kx::ALL_KX_GROUPS;
 pub mod kx_group {
     //! Supported key exchange groups.
-    pub use super::kx::X25519;
-    pub use super::kx::{SECP256R1, SECP384R1};
+    pub use super::kx::{SECP256R1, SECP384R1, X25519};
 }
 pub use signer::KeyProvider;
 pub use verify::SUPPORTED_SIG_ALGS;
 
-/// Returns an OpenSSL-based [`CryptoProvider`] using all available cipher suites ([`ALL_CIPHER_SUITES`]) and key exchange groups ([`ALL_KX_GROUPS`]).
+/// Returns a CNG-based [`CryptoProvider`] using all available cipher suites ([`ALL_CIPHER_SUITES`]) and key exchange groups ([`ALL_KX_GROUPS`]).
 ///
 /// Sample usage:
 /// ```rust
@@ -137,8 +130,6 @@ pub fn default_provider() -> CryptoProvider {
 ///
 /// The specified cipher suites and key exchange groups should be defined in descending order of preference.
 /// i.e the first elements have the highest priority during negotiation.
-///
-/// If the `fips` feature is enabled then fips mode will be enabled for OpenSSL, and this function will panic if this fails.
 ///
 /// Sample usage:
 /// ```rust
@@ -192,7 +183,6 @@ pub fn custom_provider(
 /// * `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`
 /// * `TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256`
 ///
-/// If the non-default `fips` feature is enabled, or OpenSSL is compiled with the `OPENSSL_NO_CHACHA` option, then the ChaCha20-Poly1305 cipher suites will not be included.
 /// If the default `tls12` feature is disabled then the TLS 1.2 cipher suites will not be included.
 pub static ALL_CIPHER_SUITES: &[SupportedCipherSuite] = &[
     tls13::TLS13_AES_256_GCM_SHA384,
@@ -212,7 +202,7 @@ pub static ALL_CIPHER_SUITES: &[SupportedCipherSuite] = &[
     tls12::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
 ];
 
-/// A struct that implements [`rustls::crypto::SecureRandom`].
+/// A struct that implements [`rustls::crypto::SecureRandom`] using CNG.
 #[derive(Debug)]
 pub struct SecureRandom;
 
@@ -227,16 +217,5 @@ impl rustls::crypto::SecureRandom for SecureRandom {
             .ok()
             .map_err(|_| GetRandomFailed)
         }
-    }
-}
-
-fn to_null_terminated_le_bytes(str: PCWSTR) -> Vec<u8> {
-    unsafe {
-        str.as_wide()
-            .iter()
-            .copied()
-            .chain(Some(0))
-            .flat_map(u16::to_le_bytes)
-            .collect()
     }
 }
