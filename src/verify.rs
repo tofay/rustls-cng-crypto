@@ -111,7 +111,7 @@ pub(crate) static RSA_PSS_SHA512: &dyn SignatureVerificationAlgorithm = &Verific
 };
 
 // /// ED25519 signatures according to RFC 8410
-// pub(crate) static ED25519: &dyn SignatureVerificationAlgorithm = &OpenSslAlgorithm {
+// pub(crate) static ED25519: &dyn SignatureVerificationAlgorithm = &VerificationAlgorithm {
 //     display_name: "ED25519",
 //     public_key_alg_id: alg_id::ED25519,
 //     signature_alg_id: alg_id::ED25519,
@@ -304,16 +304,13 @@ impl<const HASH_SIZE: usize> SignatureVerificationAlgorithm for VerificationAlgo
 
                 // r and s are expected to be the same size as the curve size
                 let mut signature = Vec::with_capacity(size * 2);
+
                 if r.len() < size {
-                    for _ in 0..size - r.len() {
-                        signature.push(0);
-                    }
+                    signature.extend(std::iter::repeat(0).take(size - r.len()));
                 }
                 signature.extend_from_slice(r);
                 if s.len() < size {
-                    for _ in 0..size - s.len() {
-                        signature.push(0);
-                    }
+                    signature.extend(std::iter::repeat(0).take(size - s.len()));
                 }
                 signature.extend_from_slice(s);
 
@@ -372,10 +369,10 @@ mod tests {
                     let res = alg.verify_signature(&test_group.asn_key, &test.msg, &test.sig);
                     match &test.result {
                         TestResult::Acceptable | TestResult::Valid => {
-                            assert!(res.is_ok(), "Failed test: {:?}", test);
+                            assert!(res.is_ok(), "Failed test: {test:?}");
                         }
                         TestResult::Invalid => {
-                            assert!(res.is_err(), "Failed test: {:?}", test);
+                            assert!(res.is_err(), "Failed test: {test:?}");
                         }
                     }
                 }
@@ -400,10 +397,10 @@ mod tests {
                     let res = alg.verify_signature(&test_group.asn_key, &test.msg, &test.sig);
                     match &test.result {
                         TestResult::Acceptable | TestResult::Valid => {
-                            assert!(res.is_ok(), "Failed test: {:?}", test);
+                            assert!(res.is_ok(), "Failed test: {test:?}");
                         }
                         TestResult::Invalid => {
-                            assert!(res.is_err(), "Failed test: {:?}", test);
+                            assert!(res.is_err(), "Failed test: {test:?}");
                         }
                     }
                 }
@@ -429,11 +426,11 @@ mod tests {
                 let expected_failure = test.flags.contains(&TestFlag::EdgeCaseShamirMultiplication);
 
                 match (&test.result, expected_failure) {
-                    (TestResult::Acceptable, false) | (TestResult::Valid, false) => {
-                        assert!(res.is_ok(), "Failed test: {:?}", test);
+                    (TestResult::Acceptable | TestResult::Valid, false) => {
+                        assert!(res.is_ok(), "Failed test: {test:?}");
                     }
                     _ => {
-                        assert!(res.is_err(), "Failed test: {:?}", test);
+                        assert!(res.is_err(), "Failed test: {test:?}");
                     }
                 }
             }

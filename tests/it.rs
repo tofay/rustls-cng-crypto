@@ -66,13 +66,13 @@ fn test_with_provider(
 #[case::tls13_aes_128_gcm_sha256(
     rustls_cng_crypto::cipher_suite::TLS13_AES_128_GCM_SHA256,
     rustls_cng_crypto::kx_group::SECP384R1,
-    server::Alg::PKCS_ECDSA_P256_SHA256,
+    &rcgen::PKCS_ECDSA_P256_SHA256,
     CipherSuite::TLS13_AES_128_GCM_SHA256
 )]
 #[case::tls13_aes_256_gcm_sha384(
     rustls_cng_crypto::cipher_suite::TLS13_AES_256_GCM_SHA384,
     rustls_cng_crypto::kx_group::SECP256R1,
-    server::Alg::PKCS_ECDSA_P256_SHA256,
+   & rcgen::PKCS_ECDSA_P256_SHA256,
     CipherSuite::TLS13_AES_256_GCM_SHA384
 )]
 #[cfg_attr(
@@ -80,7 +80,7 @@ fn test_with_provider(
     case::tls_ecdhe_rsa_with_aes_256_gcm_sha384(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
         rustls_cng_crypto::kx_group::SECP256R1,
-        server::Alg::PKCS_RSA_SHA384,
+        &rcgen::PKCS_RSA_SHA384,
         CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
     )
 )]
@@ -89,20 +89,20 @@ fn test_with_provider(
     case::tls_ecdhe_rsa_with_aes_128_gcm_sha256(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
         rustls_cng_crypto::kx_group::SECP256R1,
-        server::Alg::PKCS_RSA_SHA384,
+        &rcgen::PKCS_RSA_SHA384,
         CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
     )
 )]
 #[case::tls13_aes_256_gcm_sha384_x25519(
     rustls_cng_crypto::cipher_suite::TLS13_AES_256_GCM_SHA384,
     rustls_cng_crypto::kx_group::X25519,
-    server::Alg::PKCS_ECDSA_P256_SHA256,
+    &rcgen::PKCS_ECDSA_P256_SHA256,
     CipherSuite::TLS13_AES_256_GCM_SHA384
 )]
 #[case::tls13_aes_256_gcm_sha384_secp384r1(
     rustls_cng_crypto::cipher_suite::TLS13_AES_256_GCM_SHA384,
     rustls_cng_crypto::kx_group::SECP384R1,
-    server::Alg::PKCS_ECDSA_P256_SHA256,
+    &rcgen::PKCS_ECDSA_P256_SHA256,
     CipherSuite::TLS13_AES_256_GCM_SHA384
 )]
 #[cfg_attr(
@@ -110,7 +110,7 @@ fn test_with_provider(
     case::tls_ecdhe_rsa_with_chacha20_poly1305_sha256(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
         rustls_cng_crypto::kx_group::SECP256R1,
-        server::Alg::PKCS_RSA_SHA384,
+        &rcgen::PKCS_RSA_SHA384,
         CipherSuite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
     )
 )]
@@ -119,7 +119,7 @@ fn test_with_provider(
     case::tls_ecdhe_ecdsa_with_aes_128_gcm_sha256(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
         rustls_cng_crypto::kx_group::SECP256R1,
-        server::Alg::PKCS_ECDSA_P256_SHA256,
+        &rcgen::PKCS_ECDSA_P256_SHA256,
         CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
     )
 )]
@@ -128,7 +128,7 @@ fn test_with_provider(
 //     case::ed25519_tls12(
 //         rustls_cng_crypto::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 //         rustls_cng_crypto::kx_group::SECP256R1,
-//         server::Alg::PKCS_ED25519,
+//        rcgen::PKCS_ED25519,
 //         CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
 //     )
 // )]
@@ -137,20 +137,20 @@ fn test_with_provider(
     case::tls_ecdhe_rsa_with_aes_256_gcm_sha384_x25519(
         rustls_cng_crypto::cipher_suite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
         rustls_cng_crypto::kx_group::X25519,
-        server::Alg::PKCS_RSA_SHA384,
+        &rcgen::PKCS_RSA_SHA384,
         CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
     )
 )]
 #[case::tls13_aes_256_gcm_sha384_secp384r1(
     rustls_cng_crypto::cipher_suite::TLS13_AES_256_GCM_SHA384,
     rustls_cng_crypto::kx_group::SECP384R1,
-    server::Alg::PKCS_RSA_SHA512,
+    &rcgen::PKCS_RSA_SHA512,
     CipherSuite::TLS13_AES_256_GCM_SHA384
 )]
 fn test_client_and_server(
     #[case] suite: SupportedCipherSuite,
     #[case] group: &'static dyn SupportedKxGroup,
-    #[case] alg: server::Alg,
+    #[case] alg: &'static rcgen::SignatureAlgorithm,
     #[case] expected: CipherSuite,
 ) {
     // Run against a server using our default provider
@@ -232,7 +232,7 @@ fn test_to_internet(
 /// Test that the default provider returns the highest priority cipher suite
 #[test]
 fn test_default_client() {
-    let (port, certificate) = start_server(server::Alg::PKCS_RSA_SHA512);
+    let (port, certificate) = start_server(&rcgen::PKCS_RSA_SHA512);
     let actual_suite = test_with_provider(default_provider(), port, vec![certificate]);
     assert_eq!(actual_suite, CipherSuite::TLS13_AES_256_GCM_SHA384);
 }

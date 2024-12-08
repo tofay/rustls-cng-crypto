@@ -1,5 +1,5 @@
 use crate::hash::{SHA256, SHA384, SHA512};
-use crate::keys::import_ecdsa_private_key;
+use crate::keys::{import_ecdsa_private_key, KeyWrapper};
 use pkcs1::der::Decode as _;
 use pkcs1::ObjectIdentifier;
 use pkcs8::PrivateKeyInfo;
@@ -9,20 +9,16 @@ use rustls::sign::SigningKey;
 use rustls::{Error, SignatureAlgorithm, SignatureScheme};
 use sec1::EcPrivateKey;
 use std::sync::Arc;
-use windows::core::Owned;
 use windows::Win32::Security::Cryptography::{
     BCryptSignHash, BCRYPT_ECDSA_P256_ALG_HANDLE, BCRYPT_ECDSA_P384_ALG_HANDLE,
-    BCRYPT_ECDSA_P521_ALG_HANDLE, BCRYPT_FLAGS, BCRYPT_KEY_HANDLE,
+    BCRYPT_ECDSA_P521_ALG_HANDLE, BCRYPT_FLAGS,
 };
 
 #[derive(Debug, Clone)]
 pub(super) struct EcKey {
-    key: Arc<Owned<BCRYPT_KEY_HANDLE>>,
+    key: Arc<KeyWrapper>,
     scheme: SignatureScheme,
 }
-
-unsafe impl Send for EcKey {}
-unsafe impl Sync for EcKey {}
 
 // Per RFC 5480
 const P256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
@@ -99,7 +95,10 @@ impl EcKey {
         };
 
         Ok(Self {
-            key: Arc::new(import_ecdsa_private_key(alg_handle, private_key)?),
+            key: Arc::new(KeyWrapper(import_ecdsa_private_key(
+                alg_handle,
+                private_key,
+            )?)),
             scheme,
         })
     }
@@ -131,7 +130,7 @@ impl rustls::sign::Signer for EcKey {
         let mut size = 0u32;
         unsafe {
             BCryptSignHash(
-                **self.key,
+                *self.key.0,
                 None,
                 hash.as_ref(),
                 None,
@@ -142,7 +141,7 @@ impl rustls::sign::Signer for EcKey {
             .and_then(|()| {
                 let mut output = vec![0u8; size as usize];
                 BCryptSignHash(
-                    **self.key,
+                    *self.key.0,
                     None,
                     hash.as_ref(),
                     Some(&mut output),

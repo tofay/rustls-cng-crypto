@@ -1,4 +1,4 @@
-use crate::to_null_terminated_le_bytes;
+//! Algorithm provider initialization and cleanup.
 use once_cell::sync::OnceCell;
 use rustls::Error;
 use windows::core::Free;
@@ -92,4 +92,15 @@ fn load_algorithm(
         }
     }
     Ok(alg_handle)
+}
+
+fn to_null_terminated_le_bytes(str: PCWSTR) -> Vec<u8> {
+    unsafe {
+        str.as_wide()
+            .iter()
+            .copied()
+            .chain(Some(0))
+            .flat_map(u16::to_le_bytes)
+            .collect()
+    }
 }

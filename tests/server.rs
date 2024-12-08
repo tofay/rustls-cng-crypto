@@ -8,8 +8,7 @@ use rustls::server::Acceptor;
 use rustls::ServerConfig;
 
 /// Algorithm to use for the server keypair. Required to workaround
-/// <https://github.com/openssl/openssl/issues/10468> and `rcgen::SignatureAlgorithm` not
-/// being `PartialEq`, as we use openssl to generate the keypair for ed25519
+/// `rcgen::SignatureAlgorithm` not being `PartialEq`
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Alg {
@@ -26,9 +25,9 @@ pub enum Alg {
 ///
 /// Returns the port the server is listening on and the CA certificate used to sign the server certificate.
 #[must_use]
-pub fn start_server(alg: Alg) -> (u16, CertificateDer<'static>) {
+pub fn start_server(alg: &'static rcgen::SignatureAlgorithm) -> (u16, CertificateDer<'static>) {
     let pki = TestPki::for_algorithm(alg);
-    let ca_cert_der = pki.ca_cert_der.clone();
+    let ca_cert = pki.ca_cert.clone();
     let server_config = pki.server_config();
 
     let listener = std::net::TcpListener::bind("[::]:0").unwrap();
@@ -60,32 +59,21 @@ pub fn start_server(alg: Alg) -> (u16, CertificateDer<'static>) {
             }
         }
     });
-    (port, ca_cert_der)
+    (port, ca_cert)
 }
 
 struct TestPki {
-    ca_cert_der: CertificateDer<'static>,
+    ca_cert: CertificateDer<'static>,
     server_cert_der: CertificateDer<'static>,
     server_key_der: PrivateKeyDer<'static>,
 }
 
-impl Alg {
-    fn to_rcgen_algorithm(self) -> &'static SignatureAlgorithm {
-        match self {
-            Alg::PKCS_ED25519 => &rcgen::PKCS_ED25519,
-            Alg::PKCS_RSA_SHA512 => &rcgen::PKCS_RSA_SHA512,
-            Alg::PKCS_RSA_SHA384 => &rcgen::PKCS_RSA_SHA384,
-            Alg::PKCS_ECDSA_P256_SHA256 => &rcgen::PKCS_ECDSA_P256_SHA256,
-        }
-    }
-}
-
 impl TestPki {
-    fn for_algorithm(alg: Alg) -> Self {
+    fn for_algorithm(alg: &'static SignatureAlgorithm) -> Self {
         let mut ca_params = rcgen::CertificateParams::new(Vec::new()).unwrap();
         ca_params
             .distinguished_name
-            .push(rcgen::DnType::OrganizationName, "rustls-openssl tests");
+            .push(rcgen::DnType::OrganizationName, "rustls-cng-crypto tests");
         ca_params
             .distinguished_name
             .push(rcgen::DnType::CommonName, "Example CA");
@@ -95,7 +83,7 @@ impl TestPki {
             rcgen::KeyUsagePurpose::DigitalSignature,
         ];
 
-        let ca_key = generate_for(alg);
+        let ca_key = rcgen::KeyPair::generate_for(alg).unwrap();
         let ca_cert = ca_params.self_signed(&ca_key).unwrap();
 
         // Create a server end entity cert issued by the CA.
@@ -103,13 +91,13 @@ impl TestPki {
             rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
         server_ee_params.is_ca = rcgen::IsCa::NoCa;
         server_ee_params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
-        let server_key = generate_for(alg);
+        let server_key = rcgen::KeyPair::generate_for(alg).unwrap();
         let server_cert = server_ee_params
             .signed_by(&server_key, &ca_cert, &ca_key)
             .unwrap();
 
         Self {
-            ca_cert_der: ca_cert.into(),
+            ca_cert: ca_cert.into(),
             server_cert_der: server_cert.into(),
             server_key_der: PrivatePkcs8KeyDer::from(server_key.serialize_der()).into(),
         }
@@ -128,8 +116,4 @@ impl TestPki {
 
         Arc::new(server_config)
     }
-}
-
-fn generate_for(alg: Alg) -> rcgen::KeyPair {
-    rcgen::KeyPair::generate_for(alg.to_rcgen_algorithm()).unwrap()
 }
