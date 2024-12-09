@@ -322,6 +322,10 @@ impl<const HASH_SIZE: usize> SignatureVerificationAlgorithm for VerificationAlgo
             }
         }
     }
+
+    fn fips(&self) -> bool {
+        crate::fips::enabled()
+    }
 }
 
 #[cfg(test)]

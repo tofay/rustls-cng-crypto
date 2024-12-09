@@ -111,6 +111,10 @@ impl<const HASH_SIZE: usize> RustlsHkdf for Hkdf<HASH_SIZE> {
     fn hmac_sign(&self, key: &OkmBlock, message: &[u8]) -> Tag {
         self.0.with_key(key.as_ref()).sign(&[message])
     }
+
+    fn fips(&self) -> bool {
+        crate::fips::enabled()
+    }
 }
 
 // required for passing null pointer when setting HDKF_PRK_AND_FINALIZE

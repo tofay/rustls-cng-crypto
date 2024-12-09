@@ -48,6 +48,7 @@
 //!
 //! # Features
 //! - `tls12`: Enables TLS 1.2 cipher suites. Enabled by default.
+//! - `fips`: Changes the default provider to use FIPS-approved cipher suites and key exchange groups. See [fips].
 #![warn(missing_docs)]
 use rustls::crypto::{CryptoProvider, GetRandomFailed, SupportedKxGroup};
 use rustls::SupportedCipherSuite;
@@ -58,6 +59,7 @@ use windows::Win32::Security::Cryptography::{
 
 mod aead;
 mod alg;
+mod fips;
 mod hash;
 mod hkdf;
 mod hmac;
@@ -87,6 +89,9 @@ pub mod cipher_suite {
 }
 
 pub use alg::ShutdownHandle;
+#[cfg(feature = "fips")]
+pub use fips::provider as default_provider;
+pub use fips::provider as fips_provider;
 pub use kx::ALL_KX_GROUPS;
 pub mod kx_group {
     //! Supported key exchange groups.
@@ -116,6 +121,9 @@ pub use verify::SUPPORTED_SIG_ALGS;
 ///         .with_no_client_auth();
 ///
 /// ```
+///
+/// When the `fips` feature is enabled, this function will return the provider created by [`fips_provider()`].
+#[cfg(not(feature = "fips"))]
 pub fn default_provider() -> CryptoProvider {
     CryptoProvider {
         cipher_suites: ALL_CIPHER_SUITES.to_vec(),
@@ -217,5 +225,9 @@ impl rustls::crypto::SecureRandom for SecureRandom {
             .ok()
             .map_err(|_| GetRandomFailed)
         }
+    }
+
+    fn fips(&self) -> bool {
+        fips::enabled()
     }
 }

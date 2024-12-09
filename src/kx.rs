@@ -146,6 +146,13 @@ impl SupportedKxGroup for KxGroup {
     fn name(&self) -> NamedGroup {
         self.named_group()
     }
+
+    fn fips(&self) -> bool {
+        match self {
+            Self::SECP256R1 | Self::SECP384R1 => crate::fips::enabled(),
+            Self::X25519 => false,
+        }
+    }
 }
 
 impl ActiveKeyExchange for EcKeyExchange {

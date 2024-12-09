@@ -86,6 +86,10 @@ impl quic::Algorithm for KeyBuilder {
     fn aead_key_len(&self) -> usize {
         self.packet_algo.key_size()
     }
+
+    fn fips(&self) -> bool {
+        crate::fips::enabled()
+    }
 }
 
 impl quic::PacketKey for PacketKey {
