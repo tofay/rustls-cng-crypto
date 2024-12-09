@@ -7,6 +7,7 @@ use windows::Win32::Security::Cryptography::{
     BCRYPT_ECDH_P256_ALG_HANDLE, BCRYPT_ECDH_P384_ALG_HANDLE, BCRYPT_KDF_RAW_SECRET,
     BCRYPT_KEY_HANDLE,
 };
+use zeroize::Zeroize;
 
 use crate::alg;
 use crate::keys::import_ecdh_public_key;
@@ -200,21 +201,21 @@ impl ActiveKeyExchange for EcKeyExchange {
                 .map_err(|e| Error::General(format!("Failed to export secret: {e}")))?;
         }
 
-        let mut secret_bytes = [0; MAX_SECRET_SIZE];
+        let mut secret_bytes = Secret([0; MAX_SECRET_SIZE]);
         unsafe {
             BCryptDeriveKey(
                 *secret,
                 BCRYPT_KDF_RAW_SECRET,
                 None,
-                Some(&mut secret_bytes[..size as usize]),
+                Some(&mut secret_bytes.0[..size as usize]),
                 &mut size,
                 0,
             )
             .ok()
             .map_err(|e| Error::General(format!("Failed to export secret: {e}")))?;
         }
-        secret_bytes[..size as usize].reverse();
-        let secret = SharedSecret::from(&secret_bytes[..size as usize]);
+        secret_bytes.0[..size as usize].reverse();
+        let secret = SharedSecret::from(&secret_bytes.0[..size as usize]);
         Ok(secret)
     }
 
@@ -224,6 +225,14 @@ impl ActiveKeyExchange for EcKeyExchange {
 
     fn group(&self) -> NamedGroup {
         self.kx_group.named_group()
+    }
+}
+
+struct Secret<T: Zeroize>(T);
+
+impl<T: Zeroize> Drop for Secret<T> {
+    fn drop(&mut self) {
+        self.0.zeroize();
     }
 }
 
