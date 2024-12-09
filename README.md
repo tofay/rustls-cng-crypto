@@ -8,3 +8,7 @@ See the [documentation](https://docs.rs/rustls-cng-crypto) for supported cipher 
 [![Documentation](https://docs.rs/rustls-cng-crypto/badge.svg)](https://docs.rs/rustls-cng-crypto/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Coverage Status (codecov.io)](https://codecov.io/gh/tofay/rustls-cng-crypto/branch/main/graph/badge.svg)](https://codecov.io/gh/tofay/rustls-cng-crypto/)
+
+## Testing
+
+This project tests the crypto provider operations using test vectors from [Project Wycheproof](https://github.com/C2SP/wycheproof) where applicable.
