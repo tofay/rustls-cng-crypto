@@ -105,6 +105,10 @@ impl Tls13AeadAlgorithm for aead::Algorithm {
             _ => return Err(UnsupportedOperationError),
         })
     }
+
+    fn fips(&self) -> bool {
+        self.is_aes() && crate::fips::enabled()
+    }
 }
 
 impl MessageEncrypter for Tls13Crypter {

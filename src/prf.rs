@@ -65,6 +65,10 @@ impl<const HASH_SIZE: usize> rustls::crypto::tls12::Prf for Prf<HASH_SIZE> {
                 .unwrap();
         };
     }
+
+    fn fips(&self) -> bool {
+        crate::fips::enabled()
+    }
 }
 
 // Test prf using test vectors from https://mailarchive.ietf.org/arch/msg/tls/fzVCzk-z3FShgGJ6DOXqM1ydxms/

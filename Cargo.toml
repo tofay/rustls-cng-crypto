@@ -24,6 +24,7 @@ zeroize = "1.8.1"
 
 [features]
 default = ["tls12"]
+fips = []
 tls12 = ["rustls/tls12"]
 
 [dev-dependencies]

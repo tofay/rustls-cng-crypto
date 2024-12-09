@@ -22,6 +22,10 @@ impl<const SIZE: usize> rustls::crypto::hmac::Hmac for Algorithm<SIZE> {
     fn hash_output_len(&self) -> usize {
         SIZE
     }
+
+    fn fips(&self) -> bool {
+        crate::fips::enabled()
+    }
 }
 
 impl<const SIZE: usize> Key for Context<SIZE> {

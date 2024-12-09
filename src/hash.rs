@@ -104,6 +104,10 @@ impl<const SIZE: usize> rustls::crypto::hash::Hash for Algorithm<SIZE> {
     fn algorithm(&self) -> rustls::crypto::hash::HashAlgorithm {
         self.rustls_algorithm
     }
+
+    fn fips(&self) -> bool {
+        crate::fips::enabled()
+    }
 }
 
 impl<const SIZE: usize> rustls::crypto::hash::Context for Context<SIZE> {

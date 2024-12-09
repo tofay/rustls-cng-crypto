@@ -19,6 +19,10 @@ impl rustls::crypto::KeyProvider for KeyProvider {
     ) -> Result<Arc<dyn SigningKey>, Error> {
         any_supported_type(&key_der)
     }
+
+    fn fips(&self) -> bool {
+        crate::fips::enabled()
+    }
 }
 
 fn any_supported_type(der: &PrivateKeyDer<'_>) -> Result<Arc<dyn SigningKey>, Error> {
