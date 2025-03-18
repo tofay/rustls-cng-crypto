@@ -3,14 +3,13 @@ use crate::server::start_server;
 use rcgen::CertificateParams;
 use rstest::rstest;
 use rustls::crypto::{CryptoProvider, SupportedKxGroup};
+use rustls::pki_types::CertificateDer;
 use rustls::sign::SigningKey;
 use rustls::{CipherSuite, SignatureScheme, SupportedCipherSuite};
 use rustls_cng_crypto::{custom_provider, default_provider};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
-use webpki::types::pem::PemObject as _;
-use webpki::types::{CertificateDer, PrivateKeyDer};
 use webpki::EndEntityCert;
 
 pub mod server;
@@ -257,6 +256,9 @@ fn test_sign_and_verify(
     #[case] alg: &'static rcgen::SignatureAlgorithm,
     #[case] schemes: &[SignatureScheme],
 ) {
+    use rustls::pki_types::{pem::PemObject, PrivateKeyDer};
+    use webpki::EndEntityCert;
+
     let ours = rustls_cng_crypto::default_provider();
     let theirs = rustls::crypto::aws_lc_rs::default_provider();
     let pair = rcgen::KeyPair::generate_for(alg).unwrap();
