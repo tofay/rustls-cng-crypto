@@ -53,9 +53,7 @@
 use rustls::crypto::{CryptoProvider, GetRandomFailed, SupportedKxGroup};
 use rustls::SupportedCipherSuite;
 
-use windows::Win32::Security::Cryptography::{
-    BCryptGenRandom, BCRYPT_ALG_HANDLE, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-};
+use windows::Win32::Security::Cryptography::{BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG};
 
 mod aead;
 mod alg;
@@ -217,13 +215,9 @@ pub struct SecureRandom;
 impl rustls::crypto::SecureRandom for SecureRandom {
     fn fill(&self, buf: &mut [u8]) -> Result<(), GetRandomFailed> {
         unsafe {
-            BCryptGenRandom(
-                BCRYPT_ALG_HANDLE::default(),
-                buf,
-                BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-            )
-            .ok()
-            .map_err(|_| GetRandomFailed)
+            BCryptGenRandom(None, buf, BCRYPT_USE_SYSTEM_PREFERRED_RNG)
+                .ok()
+                .map_err(|_| GetRandomFailed)
         }
     }
 

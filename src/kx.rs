@@ -99,23 +99,16 @@ impl SupportedKxGroup for KxGroup {
         // Export the public key
         let mut size = 0u32;
         unsafe {
-            BCryptExportKey(
-                *key_handle,
-                BCRYPT_KEY_HANDLE::default(),
-                BCRYPT_ECCPUBLIC_BLOB,
-                None,
-                &mut size,
-                0,
-            )
-            .ok()
-            .map_err(|e| Error::General(format!("CNG error: {e}")))?;
+            BCryptExportKey(*key_handle, None, BCRYPT_ECCPUBLIC_BLOB, None, &mut size, 0)
+                .ok()
+                .map_err(|e| Error::General(format!("CNG error: {e}")))?;
         }
 
         let mut public_key = vec![0; size as usize];
         unsafe {
             BCryptExportKey(
                 *key_handle,
-                BCRYPT_KEY_HANDLE::default(),
+                None,
                 BCRYPT_ECCPUBLIC_BLOB,
                 Some(&mut public_key),
                 &mut size,

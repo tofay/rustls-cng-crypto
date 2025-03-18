@@ -2,7 +2,7 @@
 use pkcs1::{RsaPrivateKey, RsaPublicKey};
 use rustls::Error;
 use windows::{
-    core::{Owned, Param},
+    core::Owned,
     Win32::Security::Cryptography::{
         BCryptImportKeyPair, BCRYPT_ALG_HANDLE, BCRYPT_ECCKEY_BLOB, BCRYPT_ECCPRIVATE_BLOB,
         BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDH_PUBLIC_GENERIC_MAGIC,
@@ -115,7 +115,7 @@ pub(crate) fn import_rsa_public_key(
 }
 
 pub(crate) fn import_ecdsa_private_key(
-    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    alg_handle: BCRYPT_ALG_HANDLE,
     private_key: &[u8],
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
     import_ec_private_key(alg_handle, private_key, BCRYPT_ECDSA_PRIVATE_GENERIC_MAGIC)
@@ -123,7 +123,7 @@ pub(crate) fn import_ecdsa_private_key(
 
 #[cfg(test)]
 pub(crate) fn import_ecdh_private_key(
-    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    alg_handle: BCRYPT_ALG_HANDLE,
     private_key: &[u8],
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
     use windows::Win32::Security::Cryptography::BCRYPT_ECDH_PRIVATE_GENERIC_MAGIC;
@@ -131,7 +131,7 @@ pub(crate) fn import_ecdh_private_key(
 }
 
 fn import_ec_private_key(
-    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    alg_handle: BCRYPT_ALG_HANDLE,
     private_key: &[u8],
     magic: u32,
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
@@ -167,7 +167,7 @@ fn import_ec_private_key(
 }
 
 pub(crate) fn import_ecdh_public_key(
-    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    alg_handle: BCRYPT_ALG_HANDLE,
     x: &[u8],
     y: &[u8],
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
@@ -175,7 +175,7 @@ pub(crate) fn import_ecdh_public_key(
 }
 
 pub(crate) fn import_ecdsa_public_key(
-    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    alg_handle: BCRYPT_ALG_HANDLE,
     x: &[u8],
     y: &[u8],
 ) -> Result<Owned<BCRYPT_KEY_HANDLE>, Error> {
@@ -183,7 +183,7 @@ pub(crate) fn import_ecdsa_public_key(
 }
 
 fn import_ec_public_key(
-    alg_handle: impl Param<BCRYPT_ALG_HANDLE>,
+    alg_handle: BCRYPT_ALG_HANDLE,
     x: &[u8],
     y: &[u8],
     magic: u32,

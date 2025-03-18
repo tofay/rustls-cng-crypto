@@ -2,10 +2,9 @@ use core::fmt;
 use pkcs1::RsaPublicKey;
 use rustls::{
     crypto::{hash::Hash as _, WebPkiSupportedAlgorithms},
-    pki_types::{AlgorithmIdentifier, InvalidSignature, SignatureVerificationAlgorithm},
+    pki_types::{alg_id, AlgorithmIdentifier, InvalidSignature, SignatureVerificationAlgorithm},
     SignatureScheme,
 };
-use webpki::alg_id;
 use windows::Win32::Security::Cryptography::{
     BCryptGetProperty, BCryptVerifySignature, BCRYPT_ALG_HANDLE, BCRYPT_ECDSA_P256_ALG_HANDLE,
     BCRYPT_ECDSA_P384_ALG_HANDLE, BCRYPT_ECDSA_P521_ALG_HANDLE, BCRYPT_FLAGS, BCRYPT_KEY_LENGTH,
@@ -295,9 +294,15 @@ impl<const HASH_SIZE: usize> SignatureVerificationAlgorithm for VerificationAlgo
                 let s = parsed_signature.public_exponent.as_bytes();
                 let bit_size = unsafe {
                     let mut bytes = [0u8; 4];
-                    BCryptGetProperty(*key, BCRYPT_KEY_LENGTH, Some(&mut bytes), &mut 0, 0)
-                        .ok()
-                        .map_err(|_| InvalidSignature)?;
+                    BCryptGetProperty(
+                        (*key).into(),
+                        BCRYPT_KEY_LENGTH,
+                        Some(&mut bytes),
+                        &mut 0,
+                        0,
+                    )
+                    .ok()
+                    .map_err(|_| InvalidSignature)?;
                     u32::from_le_bytes(bytes) as usize
                 };
                 let size = (bit_size + 7) / 8;
