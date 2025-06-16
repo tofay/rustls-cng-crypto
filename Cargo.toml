@@ -15,7 +15,7 @@ pkcs1 = { version = "0.7.5", features = ["std"] }
 pkcs8 = "0.10.2"
 rustls = { version = "0.23.20", default-features = false, features = ["std"] }
 sec1 = "0.7.3"
-windows = { version = "0.60.0", features = [
+windows = { version = "0.61.3", features = [
     "Win32_Security_Cryptography",
     "Win32_System_WinRT",
 ] }
