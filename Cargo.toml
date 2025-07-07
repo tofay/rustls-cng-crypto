@@ -29,7 +29,7 @@ tls12 = ["rustls/tls12"]
 [dev-dependencies]
 aws-lc-rs = { version = "1.11.1", features = ["prebuilt-nasm"] }
 hex = "0.4.3"
-rcgen = { version = "0.13.1", default-features = false, features = [
+rcgen = { version = "0.14.1", default-features = false, features = [
     "crypto",
     "aws_lc_rs",
     "pem",
