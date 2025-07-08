@@ -305,17 +305,17 @@ impl<const HASH_SIZE: usize> SignatureVerificationAlgorithm for VerificationAlgo
                     .map_err(|_| InvalidSignature)?;
                     u32::from_le_bytes(bytes) as usize
                 };
-                let size = (bit_size + 7) / 8;
+                let size = bit_size.div_ceil(8);
 
                 // r and s are expected to be the same size as the curve size
                 let mut signature = Vec::with_capacity(size * 2);
 
                 if r.len() < size {
-                    signature.extend(std::iter::repeat(0).take(size - r.len()));
+                    signature.extend(std::iter::repeat_n(0, size - r.len()));
                 }
                 signature.extend_from_slice(r);
                 if s.len() < size {
-                    signature.extend(std::iter::repeat(0).take(size - s.len()));
+                    signature.extend(std::iter::repeat_n(0, size - s.len()));
                 }
                 signature.extend_from_slice(s);
 
