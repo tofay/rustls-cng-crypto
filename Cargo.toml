@@ -1,7 +1,7 @@
 [package]
 name = "rustls-cng-crypto"
 authors = ["Tom Fay <tom@teamfay.co.uk>"]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT"
 description = "Rustls crypto provider for CNG"
@@ -29,7 +29,7 @@ tls12 = ["rustls/tls12"]
 [dev-dependencies]
 aws-lc-rs = { version = "1.11.1", features = ["prebuilt-nasm"] }
 hex = "0.4.3"
-rcgen = { version = "0.13.1", default-features = false, features = [
+rcgen = { version = "0.14.1", default-features = false, features = [
     "crypto",
     "aws_lc_rs",
     "pem",
@@ -41,7 +41,7 @@ rustls = { version = "0.23.0", features = [
 ], default-features = false }
 rustls-pemfile = "2"
 rustls-webpki = { version = "0.103.0", default-features = false }
-webpki-roots = "0.26"
+webpki-roots = "1.0"
 wycheproof = { version = "0.6.0", default-features = false, features = [
     "aead",
     "ecdsa",
