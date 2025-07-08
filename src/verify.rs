@@ -305,7 +305,7 @@ impl<const HASH_SIZE: usize> SignatureVerificationAlgorithm for VerificationAlgo
                     .map_err(|_| InvalidSignature)?;
                     u32::from_le_bytes(bytes) as usize
                 };
-                let size = (bit_size + 7) / 8;
+                let size = bit_size.div_ceil(8);
 
                 // r and s are expected to be the same size as the curve size
                 let mut signature = Vec::with_capacity(size * 2);

@@ -169,7 +169,7 @@ impl ActiveKeyExchange for EcKeyExchange {
             ));
         }
 
-        let key_len = (self.kx_group.key_bits() + 7) / 8;
+        let key_len = self.kx_group.key_bits().div_ceil(8);
         let num_parts = if self.kx_group.is_nist() { 2 } else { 1 };
         if new_peer_pub_key.len() != key_len * num_parts {
             return Err(Error::PeerMisbehaved(
