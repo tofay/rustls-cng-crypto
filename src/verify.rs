@@ -311,11 +311,11 @@ impl<const HASH_SIZE: usize> SignatureVerificationAlgorithm for VerificationAlgo
                 let mut signature = Vec::with_capacity(size * 2);
 
                 if r.len() < size {
-                    signature.extend(std::iter::repeat(0).take(size - r.len()));
+                    signature.extend(std::iter::repeat_n(0, size - r.len()));
                 }
                 signature.extend_from_slice(r);
                 if s.len() < size {
-                    signature.extend(std::iter::repeat(0).take(size - s.len()));
+                    signature.extend(std::iter::repeat_n(0, size - s.len()));
                 }
                 signature.extend_from_slice(s);
 
